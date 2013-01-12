@@ -1,3 +1,6 @@
+* Fri Jan 11 2013 Anas Nashif <anas.nashif@intel.com> accepted/trunk/20130111.201618@ab0742f
+- make it build with glibc 2.17
+
 * Fri Jan 11 2013 Patrick McCarty <patrick.mccarty@linux.intel.com> upstream/3.8.1@68feca1
 - Add packaging for version 3.8.1
 - Imported Upstream version 3.8.1

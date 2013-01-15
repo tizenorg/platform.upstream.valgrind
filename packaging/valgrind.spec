@@ -33,16 +33,6 @@ debugged application runs slower and needs much more memory, but
 is usually still usable. Valgrind is still in development, but it
 has been successfully used to optimize several KDE applications.
 
-Authors:
---------
-    Julian Seward <jseward@acm.org>
-    Cerion Armour-Brown
-    Jeremy Fitzhardinge
-    Tom Hughes
-    Nicholas Nethercote
-    Paul Mackerras
-    Dirk Mueller
-    Robert Walsh
 
 %package devel
 Summary:        Memory Management Debugger
@@ -68,25 +58,13 @@ debugged application runs slower and needs much more memory, but
 is usually still usable. Valgrind is still in development, but it
 has been successfully used to optimize several KDE applications.
 
-Authors:
---------
-    Julian Seward <jseward@acm.org>
-    Cerion Armour-Brown
-    Jeremy Fitzhardinge
-    Tom Hughes
-    Nicholas Nethercote
-    Paul Mackerras
-    Dirk Mueller
-    Robert Walsh
-
-
 %prep
 %setup -q
 
 %build
-
 export CFLAGS="-O2"
 export CXXFLAGS="-O2"
+%autogen
 
 %ifarch x86_64
 %configure --enable-only64bit
@@ -106,6 +84,7 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %docs_package
 
 %files
+%license COPYING
 %{_bindir}/*
 %dir %{_libdir}/valgrind
 %ifarch x86_64
@@ -113,15 +92,6 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %endif
 %ifarch %ix86
 %{_libdir}/valgrind/*-x86-linux
-%endif
-%ifarch ppc ppc64
-%{_libdir}/valgrind/*-ppc32-linux
-%endif
-%ifarch ppc64
-%{_libdir}/valgrind/*-ppc64-linux
-%endif
-%ifarch s390 s390x
-%{_libdir}/valgrind/*-s390x-linux
 %endif
 %ifarch %arm
 %{_libdir}/valgrind/*-arm-linux

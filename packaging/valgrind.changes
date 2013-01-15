@@ -1,3 +1,6 @@
+* Mon Jan 14 2013 Anas Nashif <anas.nashif@intel.com> submit/trunk/20130115.033523@a5b40ee
+- run autogen to check for glibc 2.17
+
 * Fri Jan 11 2013 Anas Nashif <anas.nashif@intel.com> accepted/trunk/20130111.201618@ab0742f
 - make it build with glibc 2.17
 

@@ -6,6 +6,7 @@ Group:          Development/Tools/Debuggers
 Version:        3.8.1
 Release:        0
 Source0:        %{name}-%{version}.tar.bz2
+Source1001: 	valgrind.manifest
 BuildRequires:  automake
 BuildRequires:  docbook-xsl-stylesheets
 BuildRequires:  docbook_4
@@ -60,6 +61,7 @@ has been successfully used to optimize several KDE applications.
 
 %prep
 %setup -q
+cp %{SOURCE1001} .
 
 %build
 export CFLAGS="-O2"
@@ -84,6 +86,7 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %docs_package
 
 %files
+%manifest %{name}.manifest
 %license COPYING
 %{_bindir}/*
 %dir %{_libdir}/valgrind
@@ -171,5 +174,6 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %{_libdir}/valgrind/s390x-linux64.xml
 
 %files devel
+%manifest %{name}.manifest
 %{_includedir}/valgrind
 %{_libdir}/pkgconfig/valgrind.pc

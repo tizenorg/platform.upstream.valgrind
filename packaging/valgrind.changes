@@ -1,3 +1,7 @@
+* Tue Sep 03 2013 Victor Hakoun <victor.hakoun@eurogiciel.fr> accepted/tizen/20130710.214437@110ed0e
+- Fix ptrace.h error. Changed from linux/ptrace.h to asm/ptrace.h
+- make it build with glibc 2.18
+
 * Mon Jan 14 2013 Anas Nashif <anas.nashif@intel.com> submit/trunk/20130115.033523@a5b40ee
 - run autogen to check for glibc 2.17
 

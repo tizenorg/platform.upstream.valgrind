@@ -74,7 +74,11 @@ export CXXFLAGS="-O2"
 %configure
 %endif
 
+%if 0%{?_with_uclibc:%{_with_uclibc}}
+make %{?_smp_mflags} CFLAGS+="-D__UCLIBC__"
+%else
 make %{?_smp_mflags}
+%endif
 
 
 %install
@@ -141,6 +145,19 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %{_libdir}/valgrind/mips-fpu.xml
 %{_libdir}/valgrind/mips-linux-valgrind.xml
 %{_libdir}/valgrind/mips-linux.xml
+%ifarch mipsel
+%{_libdir}/valgrind/cachegrind-mips32-linux
+%{_libdir}/valgrind/callgrind-mips32-linux
+%{_libdir}/valgrind/drd-mips32-linux
+%{_libdir}/valgrind/exp-bbv-mips32-linux
+%{_libdir}/valgrind/exp-dhat-mips32-linux
+%{_libdir}/valgrind/exp-sgcheck-mips32-linux
+%{_libdir}/valgrind/helgrind-mips32-linux
+%{_libdir}/valgrind/lackey-mips32-linux
+%{_libdir}/valgrind/massif-mips32-linux
+%{_libdir}/valgrind/memcheck-mips32-linux
+%{_libdir}/valgrind/none-mips32-linux
+%endif
 %{_libdir}/valgrind/power-altivec-valgrind-s*.xml
 %{_libdir}/valgrind/power-altivec.xml
 %{_libdir}/valgrind/power-core-valgrind-s1.xml

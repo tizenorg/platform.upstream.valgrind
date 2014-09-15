@@ -3,7 +3,7 @@ Url:            http://valgrind.org/
 Summary:        Memory Management Debugger
 License:        GPL-2.0+
 Group:          Development/Tools/Debuggers
-Version:        3.8.1
+Version:        3.10.0
 Release:        0
 Source0:        %{name}-%{version}.tar.bz2
 Source1001: 	valgrind.manifest
@@ -99,6 +99,10 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %ifarch %arm
 %{_libdir}/valgrind/*-arm-linux
 %endif
+%ifarch aarch64
+%{_libdir}/valgrind/*-arm64-linux
+%endif
+
 %{_libdir}/valgrind/*-linux.so
 %{_libdir}/valgrind/*.supp
 %{_libdir}/valgrind/32bit-core-valgrind-s*.xml
@@ -141,6 +145,17 @@ rm -rf %{buildroot}%{_datadir}/doc/valgrind
 %{_libdir}/valgrind/mips-fpu.xml
 %{_libdir}/valgrind/mips-linux-valgrind.xml
 %{_libdir}/valgrind/mips-linux.xml
+%{_libdir}/valgrind/mips64-cp0-valgrind-s1.xml
+%{_libdir}/valgrind/mips64-cp0-valgrind-s2.xml
+%{_libdir}/valgrind/mips64-cp0.xml
+%{_libdir}/valgrind/mips64-cpu-valgrind-s1.xml
+%{_libdir}/valgrind/mips64-cpu-valgrind-s2.xml
+%{_libdir}/valgrind/mips64-cpu.xml
+%{_libdir}/valgrind/mips64-fpu-valgrind-s1.xml
+%{_libdir}/valgrind/mips64-fpu-valgrind-s2.xml
+%{_libdir}/valgrind/mips64-fpu.xml
+%{_libdir}/valgrind/mips64-linux-valgrind.xml
+%{_libdir}/valgrind/mips64-linux.xml
 %{_libdir}/valgrind/power-altivec-valgrind-s*.xml
 %{_libdir}/valgrind/power-altivec.xml
 %{_libdir}/valgrind/power-core-valgrind-s1.xml

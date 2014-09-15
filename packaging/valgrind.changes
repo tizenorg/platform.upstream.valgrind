@@ -1,3 +1,6 @@
+* Mon Sep 15 2014 Chanho Park <chanho61.park@samsung.com> upstream/3.10.0-5-g292051f
+- Imported Upstream version 3.10.0
+
 * Mon Jan 14 2013 Anas Nashif <anas.nashif@intel.com> submit/trunk/20130115.033523@a5b40ee
 - run autogen to check for glibc 2.17
 

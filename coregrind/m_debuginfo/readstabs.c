@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -36,7 +36,8 @@
 
 /* "on Linux (except android), or on Darwin" */
 #if (defined(VGO_linux) && \
-    !(defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)) \
+    !(defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
+      || defined(VGPV_mips32_linux_android)) \
     || defined(VGO_darwin))
 
 #include "pub_core_basics.h"
@@ -46,6 +47,7 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_xarray.h"
 #include "priv_misc.h"             /* dinfo_zalloc/free/strdup */
+#include "priv_image.h"
 #include "priv_tytypes.h"
 #include "priv_d3basics.h"
 #include "priv_storage.h"
@@ -53,7 +55,18 @@
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
 #if defined(VGO_linux)
-#  include <a.out.h> /* stabs defns */
+/* stabs symbol list entry definition. */
+struct nlist {
+  union {
+    char *n_name;
+    struct nlist *n_next;
+    long n_strx;
+  } n_un;
+  unsigned char n_type;
+  char n_other;
+  short n_desc;
+  unsigned long n_value;
+};
 #elif defined(VGO_darwin)
 #  include <mach-o/nlist.h>
 #  define n_other n_sect
@@ -98,14 +111,12 @@ typedef enum { N_UNDEF = 0,	/* undefined symbol, new stringtab  */
 */
 void ML_(read_debuginfo_stabs) ( DebugInfo* di,
                                  UChar* stabC,   Int stab_sz, 
-                                 UChar* stabstr, Int stabstr_sz )
+                                 HChar* stabstr, Int stabstr_sz )
 {
-   const Bool debug     = False;
-   const Bool contdebug = False;
    Int    i;
    Int    n_stab_entries;
    struct nlist* stab = (struct nlist*)stabC;
-   UChar *next_stabstr = NULL;
+   HChar *next_stabstr = NULL;
    /* state for various things */
    struct {
       Addr     start;         /* start address */
@@ -113,7 +124,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
       Int      line;          /* first line */
    } func = { 0, 0, -1 };
    struct {
-      Char     *name;
+      HChar   *name;
       Bool     same;
    } file = { NULL, True };
    struct {
@@ -123,6 +134,12 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
       Addr     addr;          /* start of this line */
       Bool     first;         /* first line in function */
    } line = { 0, 0, 0, 0, False };
+
+   vg_assert (0);
+   /* Stab reader broken since debuginfo server (revision 13440)
+      See #if 0 for call to  ML_(read_debuginfo_stabs) in readelf.c.
+      If ever it is repaired, file.name above should be replaced by a fndn_ix
+      for performance reasons. */
 
    /* Ok.  It all looks plausible.  Go on and read debug data. 
          stab kinds: 100   N_SO     a source file name
@@ -141,24 +158,24 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
 
    n_stab_entries = stab_sz/(int)sizeof(struct nlist);
 
+   TRACE_SYMTAB("\n--- Reading STABS (%d entries) ---\n", n_stab_entries);
+
    for (i = 0; i < n_stab_entries; i++) {
       const struct nlist *st = &stab[i];
-      Char *string;
+      HChar *string;
 
-      if (di->trace_symtab) {
-         VG_(printf) ( "%2d  type=%d   othr=%d   desc=%d   "
-                       "value=0x%x   strx=%d  %s\n", i,
-                       st->n_type, st->n_other, st->n_desc, 
-                       (Int)st->n_value,
-                       (Int)st->n_un.n_strx, 
-                       stabstr + st->n_un.n_strx );
-      }
+      TRACE_SYMTAB("%2d  type=%d   othr=%d   desc=%d   "
+                   "value=0x%x   strx=%d  %s\n", i,
+                   st->n_type, st->n_other, st->n_desc, 
+                   (Int)st->n_value,
+                   (Int)st->n_un.n_strx, 
+                   stabstr + st->n_un.n_strx );
 
       /* handle continued string stabs */
       {
          Int   qbuflen = 0;
          Int   qidx = 0;
-         Char* qbuf = NULL;
+         HChar* qbuf = NULL;
          Int   qlen;
          Bool  qcontinuing = False;
          UInt  qstringidx;
@@ -181,15 +198,14 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
             while (string[qlen-1] == '\\' && qlen > 0)
                qlen--;
 
-            if (contdebug)
-               VG_(printf)("found extension string: \"%s\" "
-                           "len=%d(%c) idx=%d buflen=%d\n", 
-                           string, qlen, string[qlen-1], qidx, qbuflen);
+            TRACE_SYMTAB("cont: found extension string: \"%s\" "
+                         "len=%d(%c) idx=%d buflen=%d\n", 
+                         string, qlen, string[qlen-1], qidx, qbuflen);
 
             /* XXX this is silly.  The si->strtab should have a way of
                appending to the last added string... */
             if ((qidx + qlen) >= qbuflen) {
-               Char *n;
+               HChar *n;
                
                if (qbuflen == 0)
                   qbuflen = 16;
@@ -205,9 +221,9 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
 
             VG_(memcpy)(&qbuf[qidx], string, qlen);
             qidx += qlen;
-            if (contdebug) {
+            if (di->trace_symtab) {
                qbuf[qidx] = '\0';
-               VG_(printf)("working buf=\"%s\"\n", qbuf);
+               TRACE_SYMTAB("cont: working buf=\"%s\"\n", qbuf);
             }
 
             i++;
@@ -227,8 +243,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
             i--;                        /* overstepped */
             string = ML_(addStr)(di, qbuf, qidx);
             ML_(dinfo_free)(qbuf);
-            if (contdebug)
-               VG_(printf)("made composite: \"%s\"\n", string);
+            TRACE_SYMTAB("cont: made composite: \"%s\"\n", string);
          }
       }
 
@@ -266,13 +281,17 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
             /* FALLTHROUGH */
 
          case N_SO: {                /* new source file */
-            UChar *nm = string;
+            HChar *nm = string;
             UInt len = VG_(strlen)(nm);
             Addr addr = func.start + st->n_value;
 
             if (line.addr != 0) {
                /* finish off previous line */
-               ML_(addLineInfo)(di, file.name, NULL, line.addr,
+               ML_(addLineInfo)(di, 
+                                ML_(addFnDn) (di,
+                                              file.name,
+                                              NULL),
+                                line.addr,
                                 addr, line.no + line.ovf * LINENO_OVERFLOW, i);
             }
 
@@ -284,8 +303,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
 
             if (len > 0 && nm[len-1] != '/') {
                file.name = ML_(addStr)(di, nm, -1);
-               if (debug)
-                  VG_(printf)("new source: %s\n", file.name);
+               TRACE_SYMTAB("new source: %s\n", file.name);
             } else if (len == 0)
                file.name = ML_(addStr)(di, "?1\0", -1);
 
@@ -297,7 +315,11 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
 
             if (line.addr != 0) {
                /* there was a previous */
-               ML_(addLineInfo)(di, file.name, NULL, line.addr,
+               ML_(addLineInfo)(di, 
+                                ML_(addFnDn)(di,
+                                             file.name,
+                                             NULL), 
+                                line.addr,
                                 addr, line.no + line.ovf * LINENO_OVERFLOW, i);
             }
 
@@ -356,7 +378,11 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
             }
 
             if (line.addr) {
-               ML_(addLineInfo)(di, file.name, NULL, line.addr,
+               ML_(addLineInfo)(di, 
+                                ML_(addFnDn) (di,
+                                              file.name,
+                                              NULL),
+                                line.addr,
                                 addr, line.no + line.ovf * LINENO_OVERFLOW, i);
                line.addr = 0;
             }

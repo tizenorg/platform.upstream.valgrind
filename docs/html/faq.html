@@ -2,8 +2,8 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
 <title>Valgrind Frequently Asked Questions</title>
-<link rel="stylesheet" href="vg_basic.css" type="text/css">
-<meta name="generator" content="DocBook XSL Stylesheets V1.75.2">
+<link rel="stylesheet" type="text/css" href="vg_basic.css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.78.1">
 <link rel="home" href="index.html" title="Valgrind Documentation">
 <link rel="up" href="FAQ.html" title="Valgrind FAQ">
 <link rel="prev" href="FAQ.html" title="Valgrind FAQ">
@@ -17,10 +17,10 @@
 <th align="center" valign="middle">Valgrind FAQ</th>
 <td width="22px" align="center" valign="middle"><a accesskey="n" href="tech-docs.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
 </tr></table></div>
-<div class="article" title="Valgrind Frequently Asked Questions">
+<div class="article">
 <div class="titlepage">
-<div><div><h2 class="title">
-<a name="faq"></a>Valgrind Frequently Asked Questions</h2></div></div>
+<div><div><h1 class="title">
+<a name="faq"></a>Valgrind Frequently Asked Questions</h1></div></div>
 <hr>
 </div>
 <div class="qandaset">
@@ -120,7 +120,7 @@
 <tr class="answer">
 <td align="left" valign="top"><a name="a-pronounce"></a></td>
 <td align="left" valign="top">
-<p>The "Val" as in the world "value".  The "grind" is pronounced
+<p>The "Val" as in the word "value".  The "grind" is pronounced
   with a short 'i' -- ie. "grinned" (rhymes with "tinned") rather than
   "grined" (rhymes with "find").</p>
 <p>Don't feel bad: almost
@@ -187,7 +187,7 @@
 <tr><td colspan="2"> </td></tr>
 <tr class="question">
 <td align="left" valign="top">
-<a name="faq.glibc_devel"></a><a name="id653429"></a><b>2.2.</b>
+<a name="faq.glibc_devel"></a><a name="idp13910304"></a><b>2.2.</b>
 </td>
 <td align="left" valign="top">
 <b>When building Valgrind, 'make' fails with this:</b><pre class="screen">
@@ -363,7 +363,7 @@ collect2: ld returned 1 exit status
     memory as soon as possible by globally disabling memory caching.
     Beware!  Doing so will probably slow down your program, sometimes
     drastically.</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>With GCC 2.91, 2.95, 3.0 and 3.1, compile all source using
         the STL with <code class="literal">-D__USE_MALLOC</code>. Beware!  This was
         removed from GCC starting with version 3.3.</p></li>
@@ -412,7 +412,7 @@ collect2: ld returned 1 exit status
 <p>Also, <code class="option">-fomit-frame-pointer</code> and
     <code class="option">-fstack-check</code> can make stack traces worse.</p>
 <p>Some example sub-traces:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem">
 <p>With debug information and unstripped (best):</p>
 <pre class="programlisting">
@@ -539,16 +539,26 @@ valgrind-listener 12345
 <p>Obviously you have to start the listener process first.  See
     the manual for more details.</p>
 <p>Second, if your program is statically linked, most Valgrind
-    tools won't work as well, because they won't be able to replace
-    certain functions, such as <code class="function">malloc</code>, with their own
-    versions.  A key indicator of this is if Memcheck says:
+    tools will only work well if they are able to replace certain
+    functions, such as <code class="function">malloc</code>, with their own
+    versions.  By default, statically linked <code class="function">malloc
+    functions</code> are not replaced. A key indicator of this is
+    if Memcheck says:
 </p>
 <pre class="programlisting">
 All heap blocks were freed -- no leaks are possible
 </pre>
 <p>
     when you know your program calls <code class="function">malloc</code>.  The
-    workaround is to avoid statically linking your program.</p>
+    workaround is to use the option 
+    <code class="option">--soname-synonyms=somalloc=NONE</code>
+    or to avoid statically linking your program.</p>
+<p>There will also be no replacement if you use an alternative 
+    <code class="function">malloc library</code> such as tcmalloc, jemalloc,
+    ...  In such a case, the
+    option <code class="option">--soname-synonyms=somalloc=zzzz</code> (where
+    zzzz is the soname of the alternative malloc library) will allow
+    Valgrind to replace the functions.</p>
 </td>
 </tr>
 <tr><td colspan="2"> </td></tr>
@@ -634,7 +644,7 @@ int main(void)
 <td align="left" valign="top">
 <p>The details are in the Memcheck section of the user manual.</p>
 <p>In short:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>"definitely lost" means your program is leaking memory --
         fix those leaks!</p></li>
 <li class="listitem"><p>"indirectly lost" means your program is leaking memory in

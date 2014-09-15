@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,9 @@
 #ifndef __VEX_GUEST_GENERIC_BB_TO_IR_H
 #define __VEX_GUEST_GENERIC_BB_TO_IR_H
 
+#include "libvex_basictypes.h"
+#include "libvex_ir.h"              // IRJumpKind
+#include "libvex.h"                 // VexArch
 
 /* This defines stuff needed by the guest insn disassemblers.
    It's a bit circular; is imported by
@@ -149,8 +152,11 @@ typedef
       /* ABI info for both guest and host */
       /*IN*/  VexAbiInfo*  abiinfo,
 
-      /* Is the host bigendian? */
-      /*IN*/  Bool         host_bigendian
+      /* The endianness of the host */
+      /*IN*/  VexEndness   host_endness,
+
+      /* Should diagnostics be printed for illegal instructions? */
+      /*IN*/  Bool         sigill_diag
 
    );
 
@@ -170,15 +176,16 @@ IRSB* bb_to_IR (
          /*IN*/ UChar*           guest_code,
          /*IN*/ Addr64           guest_IP_bbstart,
          /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
-         /*IN*/ Bool             host_bigendian,
+         /*IN*/ VexEndness       host_endness,
+         /*IN*/ Bool             sigill_diag,
          /*IN*/ VexArch          arch_guest,
          /*IN*/ VexArchInfo*     archinfo_guest,
          /*IN*/ VexAbiInfo*      abiinfo_both,
          /*IN*/ IRType           guest_word_type,
          /*IN*/ UInt             (*needs_self_check)(void*,VexGuestExtents*),
          /*IN*/ Bool             (*preamble_function)(void*,IRSB*),
-         /*IN*/ Int              offB_GUEST_TISTART,
-         /*IN*/ Int              offB_GUEST_TILEN,
+         /*IN*/ Int              offB_GUEST_CMSTART,
+         /*IN*/ Int              offB_GUEST_CMLEN,
          /*IN*/ Int              offB_GUEST_IP,
          /*IN*/ Int              szB_GUEST_IP
       );

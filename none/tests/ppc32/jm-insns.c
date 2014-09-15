@@ -16,9 +16,9 @@ case I chased).
 /*
  * test-ppc.c:
  * PPC tests for qemu-PPC CPU emulation checks
- * 
+ *
  * Copyright (c) 2005 Jocelyn Mayer
- * 
+ *
  *   This program is free software; you can redistribute it and/or
  *   modify it under the terms of the GNU General Public License V2
  *   as published by the Free Software Foundation
@@ -168,6 +168,7 @@ case I chased).
 #include <stdint.h>
 #include "tests/sys_mman.h"
 #include "tests/malloc.h"       // memalign16
+#include "./opcodes.h"
 
 #define STATIC_ASSERT(e) sizeof(struct { int:-!(e); })
 
@@ -259,6 +260,7 @@ asm(".section \".text\"\n"                 \
     "\t.previous\n"                        \
     )
 #else
+#if defined(VGP_ppc64be_linux)
 #define ASSEMBLY_FUNC(__fname, __insn)     \
 asm(".section  \".text\"\n"                \
     "\t.align 2\n"                         \
@@ -274,6 +276,16 @@ asm(".section  \".text\"\n"                \
     "\t"__insn"\n"                         \
     "\tblr\n"                              \
     )
+#elif defined(VGP_ppc64le_linux)
+#define ASSEMBLY_FUNC(__fname, __insn)     \
+asm(".section  \".text\"\n"         \
+    "\t.align 2\n"                         \
+    "\t.global "__fname"\n"                \
+    ""__fname":\n"                         \
+    "\t"__insn"\n"                         \
+    "\tblr\n"                              \
+    )
+#endif // VGP_ppc64 or VGP_ppc64le
 #endif // #ifndef __powerpc64__
 
 
@@ -353,6 +365,7 @@ enum test_flags {
     PPC_LDX_ARGS   = 0x00000009,  // family: ldst
     PPC_ST_ARGS    = 0x0000000A,  // family: ldst
     PPC_STX_ARGS   = 0x0000000B,  // family: ldst
+    PPC_ONE_IMM    = 0x0000000C,  // PPC_MISC family
     PPC_NB_ARGS    = 0x0000000F,
     /* Type */
     PPC_ARITH      = 0x00000100,
@@ -361,6 +374,7 @@ enum test_flags {
     PPC_CROP       = 0x00000400,
     PPC_LDST       = 0x00000500,
     PPC_POPCNT     = 0x00000600,
+    PPC_ANY        = 0x00000700,
     PPC_TYPE       = 0x00000F00,
     /* Family */
     PPC_INTEGER    = 0x00010000,
@@ -368,6 +382,7 @@ enum test_flags {
     PPC_405        = 0x00030000,
     PPC_ALTIVEC    = 0x00040000,
     PPC_FALTIVEC   = 0x00050000,
+    PPC_MISC       = 0x00060000,
     PPC_FAMILY     = 0x000F0000,
     /* Flags: these may be combined, so use separate bitfields. */
     PPC_CR         = 0x01000000,
@@ -527,6 +542,11 @@ static void test_mulld (void)
     __asm__ __volatile__ ("mulld        17, 14, 15");
 }
 
+static void test_mulldo (void)
+{
+    __asm__ __volatile__ ("mulldo        17, 14, 15");
+}
+
 static void test_mulhd (void)
 {
     __asm__ __volatile__ ("mulhd        17, 14, 15");
@@ -545,6 +565,16 @@ static void test_divd (void)
 static void test_divdu (void)
 {
     __asm__ __volatile__ ("divdu        17, 14, 15");
+}
+
+static void test_divdo (void)
+{
+    __asm__ __volatile__ ("divdo        17, 14, 15");
+}
+
+static void test_divduo (void)
+{
+    __asm__ __volatile__ ("divduo        17, 14, 15");
 }
 #endif // #ifdef __powerpc64__
 
@@ -569,8 +599,11 @@ static test_t tests_ia_ops_two[] = {
     { &test_mulhd           , "       mulhd", },
     { &test_mulhdu          , "      mulhdu", },
     { &test_mulld           , "       mulld", },
+    { &test_mulldo          , "      mulldo", },
     { &test_divd            , "        divd", },
     { &test_divdu           , "       divdu", },
+    { &test_divdo           , "       divdo", },
+    { &test_divduo          , "      divduo", },
 #endif // #ifdef __powerpc64__
     { NULL,                   NULL,           },
 };
@@ -671,6 +704,11 @@ static void test_mulld_ (void)
     __asm__ __volatile__ ("mulld.       17, 14, 15");
 }
 
+static void test_mulldo_ (void)
+{
+    __asm__ __volatile__ ("mulldo.       17, 14, 15");
+}
+
 static void test_divd_ (void)
 {
     __asm__ __volatile__ ("divd.        17, 14, 15");
@@ -679,6 +717,16 @@ static void test_divd_ (void)
 static void test_divdu_ (void)
 {
     __asm__ __volatile__ ("divdu.       17, 14, 15");
+}
+
+static void test_divdo_ (void)
+{
+    __asm__ __volatile__ ("divdo.        17, 14, 15");
+}
+
+static void test_divduo_ (void)
+{
+    __asm__ __volatile__ ("divduo.       17, 14, 15");
 }
 #endif // #ifdef __powerpc64__
 
@@ -703,8 +751,11 @@ static test_t tests_iar_ops_two[] = {
     { &test_mulhd_          , "      mulhd.", },
     { &test_mulhdu_         , "     mulhdu.", },
     { &test_mulld_          , "      mulld.", },
+    { &test_mulldo_          , "    mulldo.", },
     { &test_divd_           , "       divd.", },
     { &test_divdu_          , "      divdu.", },
+    { &test_divdo_          , "      divdo.", },
+    { &test_divduo_         , "     divduo.", },
 #endif // #ifdef __powerpc64__
     { NULL,                   NULL,           },
 };
@@ -3314,6 +3365,46 @@ static test_t tests_av_float_ops_spe[] = {
 };
 #endif /* defined (HAS_ALTIVEC) */
 
+/* Power ISA 2.03 support dcbtct and dcbtstct with valid hint values b00000 - 0b00111.
+ * The ISA 2.06 added support for more valid hint values, but rather than tie ourselves
+ * in knots trying to test all permuations of ISAs and valid hint values, we'll just
+ * verify some of the base hint values from ISA 2.03.
+ *
+ * In a similar vein, in ISA 2.03, dcbtds had valid values of 0b01000 - 0b01010, whereas
+ * ISA 2.06 expanded the range of valid hint values to 0b01000 - 0b01111.  We just test
+ * one of the ISA 2.03-supported values for dcbtds.
+ */
+static void test_dcbtct (void)
+{
+   /*  dcbt RA, RB, TH */
+   ASM_DCBT(17, 14, 1);
+   ASM_DCBT(17, 14, 7);
+}
+
+static void test_dcbtds (void)
+{
+   /*  dcbt RA, RB, TH */
+   ASM_DCBT(17, 14, 10);
+   ASM_DCBT(17, 14, 0);
+   ASM_DCBT(17, 14, 16);
+}
+
+static void test_dcbtst (void)
+{
+   /*  dcbtst RA, RB, TH */
+   ASM_DCBTST(17, 14, 6);
+   ASM_DCBTST(17, 14, 15);
+}
+
+
+static test_t tests_dcbt[] = {
+    { &test_dcbtct       , "   dcbtct", },
+    { &test_dcbtds       , "   dcbtds", },
+    { &test_dcbtst       , "   dcbtst", },
+    { NULL,                   NULL,           },
+};
+
+
 #if defined (IS_PPC405)
 static void test_macchw (void)
 {
@@ -4154,6 +4245,11 @@ static test_table_t all_tests[] = {
         0x00050207,
     },
 #endif /* defined (HAS_ALTIVEC) */
+    {
+        tests_dcbt,
+        "Miscellaneous test: Data cache insns",
+        0x0006070C,
+    },
 #if defined (IS_PPC405)
     {
         tests_p4m_ops_two     ,
@@ -4764,7 +4860,7 @@ static inline
 test_func_t init_function( test_func_t p_func_F, uint32_t func_buf[] )
 {
    uint32_t* p_func = (uint32_t*)p_func_F;
-#ifndef __powerpc64__
+#if !defined(__powerpc64__) || _CALL_ELF == 2
    func_buf[0] = p_func[0];
    func_buf[1] = p_func[1];
    return (test_func_t)&func_buf[0];
@@ -5436,20 +5532,21 @@ static void test_int_ld_one_reg_imm16 (const char* name,
    uint32_t* func_buf = get_rwx_area();
    volatile HWord_t res, base;
    volatile uint32_t flags, xer;
-   int i, offs, is_lwa=0;
+   int i, offs, shift_offset = 0;
 
 #ifdef __powerpc64__
-   is_lwa = strstr(name, "lwa") != NULL;
+   if (strstr(name, "lwa") || strstr(name, "ld") || strstr(name, "ldu"))
+      shift_offset = 1;
 #endif
 
    // +ve d
    base = (HWord_t)&iargs[0];
    for (i=0; i<nb_iargs; i++) {
-      offs = i * sizeof(HWord_t);
+      offs = (i == 0) ? i : (i * sizeof(HWord_t)) - 1;
 
       /* Patch up the instruction */
       func = init_function( func_IN, func_buf );
-      if (is_lwa)
+      if (shift_offset)
          patch_op_imm(&func_buf[0], offs>>2, 2, 14);
       else
          patch_op_imm16(&func_buf[0], offs);
@@ -5472,8 +5569,8 @@ static void test_int_ld_one_reg_imm16 (const char* name,
    
    // -ve d
    base = (HWord_t)&iargs[nb_iargs-1];
-   for (i = -nb_iargs+1; i<=0; i++) {
-      offs = i * sizeof(HWord_t);
+   for (i = 0; i > -nb_iargs; i--) {
+      offs = (i * sizeof(HWord_t)) + 1;
 
       /* Patch up the instruction */
       func = init_function( func, func_buf );
@@ -5491,7 +5588,7 @@ static void test_int_ld_one_reg_imm16 (const char* name,
 #else
       printf("%s %3d, (%016llx) => %016llx, %3lld (%08x %08x)\n",
 #endif
-             name, offs, iargs[nb_iargs-1+i], res, r14-base, flags, xer);
+             name, offs, iargs[nb_iargs-1 + i], res, r14-base, flags, xer);
    }
 }
 
@@ -5648,6 +5745,28 @@ static test_loop_t int_loops[] = {
    &test_int_st_three_regs,
 };
 
+static void test_dcbt_ops (const char* name, test_func_t func,
+                           unused uint32_t test_flags)
+{
+   unsigned long * data = (unsigned long *)malloc(4096 * sizeof(unsigned long));
+   HWord_t base;
+
+   base  = (HWord_t)data;
+   size_t offs = 100 * sizeof(unsigned long);    // some arbitrary offset)
+
+   r17  = base;
+   r14  = offs;
+
+   (*func)();
+
+   printf("%s with various hint values completes with no exceptions\n", name);
+   free(data);
+}
+
+static test_loop_t misc_loops[] = {
+   &test_dcbt_ops,
+};
+
 #if !defined (NO_FLOAT)
 static void test_float_three_args (const char* name, test_func_t func,
                                    unused uint32_t test_flags)
@@ -5660,7 +5779,6 @@ static void test_float_three_args (const char* name, test_func_t func,
    /* Note: using nb_normal_fargs:
       - not testing special values for these insns
    */
-
    for (i=0; i<nb_normal_fargs; i+=3) {
       for (j=0; j<nb_normal_fargs; j+=5) {
          for (k=0; k<nb_normal_fargs; k+=7) {
@@ -5858,10 +5976,11 @@ static void test_float_ld_one_reg_imm16 (const char* name,
 {
    volatile test_func_t func;
    uint32_t* func_buf = get_rwx_area();
-   uint32_t base;
+   HWord_t base;
    volatile uint32_t flags, xer;
    volatile double src, res;
-   int i, offs;
+   int i;
+   uint16_t offs;
 
    /* offset within [1-nb_fargs:nb_fargs] */
    for (i=1-nb_fargs; i<nb_fargs; i++) {
@@ -5909,7 +6028,7 @@ static void test_float_ld_two_regs (const char* name,
    volatile uint32_t flags, xer;
    volatile double src, res;
    int i, offs;
-   
+
    /* offset within [1-nb_fargs:nb_fargs] */
    for (i=1-nb_fargs; i<nb_fargs; i++) {
       offs = i * 8;                // offset = i * sizeof(double)
@@ -6614,8 +6733,9 @@ static void lvs_cb (const char *name, test_func_t func,
    volatile uint32_t flags, tmpcr;
    volatile vector unsigned int tmpvscr;
    volatile vector unsigned int vec_out, vscr;
-   unsigned int *dst;
-   int i;
+   unsigned shift;
+   unsigned char * dst;
+   int i, j;
 #if defined TEST_VSCR_SAT
    unsigned int* p_vscr;
 #endif
@@ -6624,7 +6744,8 @@ static void lvs_cb (const char *name, test_func_t func,
       vec_out = (vector unsigned int){ 0,0,0,0 };
       
       // make sure start address is 16 aligned - use viargs[0]
-      r15 = (HWord_t)&viargs[0];
+      HWord_t * r15_in_ptr = (HWord_t *)&viargs[0];
+      r15 = *r15_in_ptr;
       r14 = i;
 
       /* Save flags */
@@ -6651,11 +6772,18 @@ static void lvs_cb (const char *name, test_func_t func,
       __asm__ __volatile__ ("mtcr   %0" : : "r"  (tmpcr));
       __asm__ __volatile__ ("mtvscr %0" : : "v" (tmpvscr));
       
-      dst = (unsigned int*)&vec_out;
+      dst = (unsigned char*)&vec_out;
 
-      printf("%s %3d, %3d", name, i, 0);
-      printf(" => %08x %08x %08x %08x ", dst[0], dst[1], dst[2], dst[3]);
-      printf("(%08x)\n", flags);
+      shift = ((unsigned int)i + *r15_in_ptr) & 0xf;
+      printf("%s %x, %3d", name, shift, 0);
+      printf(" => 0x");
+      for (j = 0; j < 16; j++) {
+         printf("%02x", dst[j]);
+         if (j == 7)
+            printf(" 0x");
+      }
+
+      printf(" (%08x)\n", flags);
    }
    if (verbose) printf("\n");
 }
@@ -7339,7 +7467,7 @@ static int check_name (const char* name, const char *filter,
 typedef struct insn_sel_flags_t_struct {
    int one_arg, two_args, three_args;
    int arith, logical, compare, ldst;
-   int integer, floats, p405, altivec, faltivec;
+   int integer, floats, p405, altivec, faltivec, misc;
    int cr;
 } insn_sel_flags_t;
 
@@ -7378,6 +7506,7 @@ static void do_tests ( insn_sel_flags_t seln_flags,
           (family == PPC_FLOAT    && !seln_flags.floats) ||
           (family == PPC_405      && !seln_flags.p405) ||
           (family == PPC_ALTIVEC  && !seln_flags.altivec) ||
+          (family == PPC_MISC  && !seln_flags.misc) ||
           (family == PPC_FALTIVEC && !seln_flags.faltivec))
          continue;
       /* Check flags update */
@@ -7390,6 +7519,9 @@ static void do_tests ( insn_sel_flags_t seln_flags,
       switch (family) {
       case PPC_INTEGER:
          loop = &int_loops[nb_args - 1];
+         break;
+      case PPC_MISC:
+         loop = &misc_loops[0];
          break;
       case PPC_FLOAT:
 #if !defined (NO_FLOAT)
@@ -7491,6 +7623,7 @@ static void usage (void)
            "\t-i: test integer instructions (default)\n"
            "\t-f: test floating point instructions\n"
            "\t-a: test altivec instructions\n"
+           "\t-m: test miscellaneous instructions\n"
            "\t-A: test all (int, fp, altivec) instructions\n"
            "\t-v: be verbose\n"
            "\t-h: display this help and exit\n"
@@ -7637,6 +7770,7 @@ int main (int argc, char **argv)
       ./jm-insns -i   => int insns
       ./jm-insns -f   => fp  insns
       ./jm-insns -a   => av  insns
+      ./jm-insns -m   => miscellaneous insns
       ./jm-insns -A   => int, fp and avinsns
    */
    char *filter = NULL;
@@ -7655,13 +7789,14 @@ int main (int argc, char **argv)
    // Family
    flags.integer    = 0;
    flags.floats     = 0;
+   flags.misc       = 0;
    flags.p405       = 0;
    flags.altivec    = 0;
    flags.faltivec   = 0;
    // Flags
    flags.cr         = 2;
 
-   while ((c = getopt(argc, argv, "ifahvA")) != -1) {
+   while ((c = getopt(argc, argv, "ifmahvA")) != -1) {
       switch (c) {
       case 'i':
          flags.integer  = 1;
@@ -7672,6 +7807,9 @@ int main (int argc, char **argv)
       case 'a':
          flags.altivec  = 1;
          flags.faltivec = 1;
+         break;
+      case 'm':
+         flags.misc     = 1;
          break;
       case 'A':
          flags.integer  = 1;

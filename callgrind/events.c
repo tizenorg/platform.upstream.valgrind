@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -46,7 +46,7 @@ void initialize_event_sets(void)
 	eventGroup[i] = 0;
 
     for(i=0; i< MAX_EVENTSET_COUNT; i++)
-	eventSetTable[i] = 0;
+	eventSetTable[i] = 0; 
 
     eventSets_initialized = 1;
  }
@@ -62,13 +62,13 @@ EventGroup* new_event_group(int id, int n)
     CLG_ASSERT(eventGroup[id]==0);
 
     eg = (EventGroup*) CLG_MALLOC("cl.events.group.1",
-				  sizeof(EventGroup) + n * sizeof(Char*));
+				  sizeof(EventGroup) + n * sizeof(HChar*));
     eg->size = n;
     eventGroup[id] = eg;
     return eg;
 }
 
-EventGroup* CLG_(register_event_group) (int id, Char* n1)
+EventGroup* CLG_(register_event_group) (int id, const HChar* n1)
 {
     EventGroup* eg = new_event_group(id, 1);
     eg->name[0] = n1;
@@ -76,7 +76,8 @@ EventGroup* CLG_(register_event_group) (int id, Char* n1)
     return eg;
 }
 
-EventGroup* CLG_(register_event_group2)(int id, Char* n1, Char* n2)
+EventGroup* CLG_(register_event_group2)(int id, const HChar* n1,
+                                        const HChar* n2)
 {
     EventGroup* eg = new_event_group(id, 2);
     eg->name[0] = n1;
@@ -85,7 +86,8 @@ EventGroup* CLG_(register_event_group2)(int id, Char* n1, Char* n2)
     return eg;
 }
 
-EventGroup* CLG_(register_event_group3)(int id, Char* n1, Char* n2, Char* n3)
+EventGroup* CLG_(register_event_group3)(int id, const HChar* n1,
+                                        const HChar* n2, const HChar* n3)
 {
     EventGroup* eg = new_event_group(id, 3);
     eg->name[0] = n1;
@@ -95,8 +97,9 @@ EventGroup* CLG_(register_event_group3)(int id, Char* n1, Char* n2, Char* n3)
     return eg;
 }
 
-EventGroup* CLG_(register_event_group4)(int id,
-					Char* n1, Char* n2, Char* n3, Char* n4)
+EventGroup* CLG_(register_event_group4)(int id, const HChar* n1,
+                                        const HChar* n2, const HChar* n3,
+                                        const HChar* n4)
 {
     EventGroup* eg = new_event_group(id, 4);
     eg->name[0] = n1;
@@ -159,14 +162,6 @@ EventSet* CLG_(get_event_set2)(Int id1, Int id2)
     return eventset_from_mask((1u << id1) | (1u << id2));
 }
 
-EventSet* CLG_(get_event_set3)(Int id1, Int id2, Int id3)
-{
-    CLG_ASSERT(id1>=0 && id1<MAX_EVENTGROUP_COUNT);
-    CLG_ASSERT(id2>=0 && id2<MAX_EVENTGROUP_COUNT);
-    CLG_ASSERT(id3>=0 && id3<MAX_EVENTGROUP_COUNT);
-    return eventset_from_mask((1u << id1) | (1u << id2) | (1u << id3));
-}
-
 EventSet* CLG_(add_event_group)(EventSet* es, Int id)
 {
     CLG_ASSERT(id>=0 && id<MAX_EVENTGROUP_COUNT);
@@ -187,30 +182,6 @@ EventSet* CLG_(add_event_set)(EventSet* es1, EventSet* es2)
     if (!es1) es1 = eventset_from_mask(0);
     if (!es2) es2 = eventset_from_mask(0);
     return eventset_from_mask(es1->mask | es2->mask);
-}
-
-Int CLG_(sprint_eventset)(Char* buf, EventSet* es)
-{
-    Int i, j, pos;
-    UInt mask;
-    EventGroup* eg;
-
-
-    CLG_ASSERT(es->size >0);
-    pos = 0;
-    for(i=0, mask=1; i<MAX_EVENTGROUP_COUNT; i++, mask=mask<<1) {
-	if ((es->mask & mask)==0) continue;
-	if (eventGroup[i] ==0) continue;
-
-	eg = eventGroup[i];
-	for(j=0; j<eg->size; j++) {
-	    if (pos>0) buf[pos++] = ' ';
-	    pos += VG_(sprintf)(buf + pos, "%s", eg->name[j]);
-	}
-    }
-    buf[pos] = 0;
-
-    return pos;
 }
 
 
@@ -262,19 +233,6 @@ Bool CLG_(is_zero_cost)(EventSet* es, ULong* cost)
 
     for(i=0; i<es->size; i++)
 	if (cost[i] != 0) return False;
-
-    return True;
-}
-
-Bool CLG_(is_equal_cost)(EventSet* es, ULong* c1, ULong* c2)
-{
-    Int i;
-
-    if (!c1) return CLG_(is_zero_cost)(es, c2);
-    if (!c2) return CLG_(is_zero_cost)(es, c1);
-
-    for(i=0; i<es->size; i++)
-	if (c1[i] != c2[i]) return False;
 
     return True;
 }
@@ -442,33 +400,6 @@ Bool CLG_(add_diff_cost_lz)(EventSet* es, ULong** pdst, ULong* old, ULong* new_c
 }
 
 
-/* Returns number of characters written */
-Int CLG_(sprint_cost)(Char* buf, EventSet* es, ULong* c)
-{
-    Int i, pos, skipped = 0;
-
-    if (!c || es->size==0) return 0;
-
-    /* At least one entry */
-    pos = VG_(sprintf)(buf, "%llu", c[0]);
-    for(i=1; i<es->size; i++) {
-	if (c[i] == 0) {
-	    skipped++;
-	    continue;
-	}
-	while(skipped>0) {
-	    buf[pos++] = ' ';
-	    buf[pos++] = '0';
-	    skipped--;
-	}
-	buf[pos++] = ' ';
-	pos += VG_(sprintf)(buf+pos, "%llu", c[i]);
-    }
-
-    return pos;
-}
-
-
 /* Allocate space for an event mapping */
 EventMapping* CLG_(get_eventmapping)(EventSet* es)
 {
@@ -487,7 +418,7 @@ EventMapping* CLG_(get_eventmapping)(EventSet* es)
     return em;
 }
 
-void CLG_(append_event)(EventMapping* em, Char* n)
+void CLG_(append_event)(EventMapping* em, const HChar* n)
 {
     Int i, j, offset = 0;
     UInt mask;
@@ -515,7 +446,7 @@ void CLG_(append_event)(EventMapping* em, Char* n)
 
 
 /* Returns number of characters written */
-Int CLG_(sprint_eventmapping)(Char* buf, EventMapping* em)
+Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping* em)
 {
     Int i, pos = 0;
     EventGroup* eg;
@@ -534,7 +465,7 @@ Int CLG_(sprint_eventmapping)(Char* buf, EventMapping* em)
 }
 
 /* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(Char* buf, EventMapping* em, ULong* c)
+Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping* em, ULong* c)
 {
     Int i, pos, skipped = 0;
 

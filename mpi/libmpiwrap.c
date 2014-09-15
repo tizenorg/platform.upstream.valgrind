@@ -18,7 +18,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2012 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2006-2013 OpenWorks LLP.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -152,7 +152,7 @@ typedef    signed long  Word;
 typedef  unsigned long  UWord;
 
 #if !defined(offsetof)
-#  define offsetof(type,memb) ((int)&((type*)0)->memb)
+#  define offsetof(type,memb) ((UWord)&((type*)0)->memb)
 #endif
 
 /* Find the size of long double image (not 'sizeof(long double)').

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -61,14 +61,15 @@
 #include "pub_core_basics.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_vki.h"
-#include "pub_core_vkiscnums.h"    // __NR_sched_yield
-#include "pub_core_libcsetjmp.h"   // to keep _threadstate.h happy
+#include "pub_core_vkiscnums.h"  // __NR_sched_yield
+#include "pub_core_libcsetjmp.h" // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
+#include "pub_core_clientstate.h"
 #include "pub_core_aspacemgr.h"
-#include "pub_core_clreq.h"         // for VG_USERREQ__*
+#include "pub_core_clreq.h"      // for VG_USERREQ__*
 #include "pub_core_dispatch.h"
-#include "pub_core_errormgr.h"      // For VG_(get_n_errs_found)()
-#include "pub_core_gdbserver.h"     // for VG_(gdbserver) and VG_(gdbserver_activity)
+#include "pub_core_errormgr.h"   // For VG_(get_n_errs_found)()
+#include "pub_core_gdbserver.h"  // for VG_(gdbserver)/VG_(gdbserver_activity)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
@@ -81,6 +82,7 @@
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
 #include "pub_core_replacemalloc.h"
+#include "pub_core_sbprofile.h"
 #include "pub_core_signals.h"
 #include "pub_core_stacks.h"
 #include "pub_core_stacktrace.h"    // For VG_(get_and_pp_StackTrace)()
@@ -93,6 +95,7 @@
 #include "priv_sched-lock.h"
 #include "pub_core_scheduler.h"     // self
 #include "pub_core_redir.h"
+#include "libvex_emnote.h"          // VexEmNote
 
 
 /* ---------------------------------------------------------------------
@@ -171,35 +174,40 @@ static struct sched_lock *the_BigLock;
    ------------------------------------------------------------------ */
 
 static
-void print_sched_event ( ThreadId tid, Char* what )
+void print_sched_event ( ThreadId tid, const HChar* what )
 {
    VG_(message)(Vg_DebugMsg, "  SCHED[%d]: %s\n", tid, what );
 }
 
-/* For showing SB counts, if the user asks to see them. */
-#define SHOW_SBCOUNT_EVERY (20ULL * 1000 * 1000)
-static ULong bbs_done_lastcheck = 0;
-
+/* For showing SB profiles, if the user asks to see them. */
 static
-void maybe_show_sb_counts ( void )
+void maybe_show_sb_profile ( void )
 {
-   Long delta = bbs_done - bbs_done_lastcheck;
+   /* DO NOT MAKE NON-STATIC */
+   static ULong bbs_done_lastcheck = 0;
+   /* */
+   vg_assert(VG_(clo_profyle_interval) > 0);
+   Long delta = (Long)(bbs_done - bbs_done_lastcheck);
    vg_assert(delta >= 0);
-   if (UNLIKELY(delta >= SHOW_SBCOUNT_EVERY)) {
-      VG_(umsg)("%'lld superblocks executed\n", bbs_done);
+   if ((ULong)delta >= VG_(clo_profyle_interval)) {
       bbs_done_lastcheck = bbs_done;
+      VG_(get_and_show_SB_profile)(bbs_done);
    }
 }
 
 static
-HChar* name_of_sched_event ( UInt event )
+const HChar* name_of_sched_event ( UInt event )
 {
    switch (event) {
-      case VEX_TRC_JMP_TINVAL:         return "TINVAL";
+      case VEX_TRC_JMP_INVALICACHE:    return "INVALICACHE";
+      case VEX_TRC_JMP_FLUSHDCACHE:    return "FLUSHDCACHE";
       case VEX_TRC_JMP_NOREDIR:        return "NOREDIR";
+      case VEX_TRC_JMP_SIGILL:         return "SIGILL";
       case VEX_TRC_JMP_SIGTRAP:        return "SIGTRAP";
       case VEX_TRC_JMP_SIGSEGV:        return "SIGSEGV";
       case VEX_TRC_JMP_SIGBUS:         return "SIGBUS";
+      case VEX_TRC_JMP_SIGFPE_INTOVF:
+      case VEX_TRC_JMP_SIGFPE_INTDIV:  return "SIGFPE";
       case VEX_TRC_JMP_EMWARN:         return "EMWARN";
       case VEX_TRC_JMP_EMFAIL:         return "EMFAIL";
       case VEX_TRC_JMP_CLIENTREQ:      return "CLIENTREQ";
@@ -233,6 +241,9 @@ ThreadId VG_(alloc_ThreadState) ( void )
       if (VG_(threads)[i].status == VgTs_Empty) {
 	 VG_(threads)[i].status = VgTs_Init;
 	 VG_(threads)[i].exitreason = VgSrc_None;
+         if (VG_(threads)[i].thread_name)
+            VG_(arena_free)(VG_AR_CORE, VG_(threads)[i].thread_name);
+         VG_(threads)[i].thread_name = NULL;
          return i;
       }
    }
@@ -250,7 +261,7 @@ ThreadId VG_(alloc_ThreadState) ( void )
 
    When this returns, we'll actually be running.
  */
-void VG_(acquire_BigLock)(ThreadId tid, HChar* who)
+void VG_(acquire_BigLock)(ThreadId tid, const HChar* who)
 {
    ThreadState *tst;
 
@@ -280,7 +291,10 @@ void VG_(acquire_BigLock)(ThreadId tid, HChar* who)
    VG_(running_tid) = tid;
 
    { Addr gsp = VG_(get_SP)(tid);
-     VG_(unknown_SP_update)(gsp, gsp, 0/*unknown origin*/);
+      if (NULL != VG_(tdict).track_new_mem_stack_w_ECU)
+         VG_(unknown_SP_update_w_ECU)(gsp, gsp, 0/*unknown origin*/);
+      else
+         VG_(unknown_SP_update)(gsp, gsp);
    }
 
    if (VG_(clo_trace_sched)) {
@@ -298,7 +312,8 @@ void VG_(acquire_BigLock)(ThreadId tid, HChar* who)
    but it may mean that we remain in a Runnable state and we're just
    yielding the CPU to another thread).
  */
-void VG_(release_BigLock)(ThreadId tid, ThreadStatus sleepstate, HChar* who)
+void VG_(release_BigLock)(ThreadId tid, ThreadStatus sleepstate,
+                          const HChar* who)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
@@ -313,7 +328,7 @@ void VG_(release_BigLock)(ThreadId tid, ThreadStatus sleepstate, HChar* who)
    VG_(running_tid) = VG_INVALID_THREADID;
 
    if (VG_(clo_trace_sched)) {
-      Char buf[200];
+      HChar buf[200];
       vg_assert(VG_(strlen)(who) <= 200-100);
       VG_(sprintf)(buf, "releasing lock (%s) -> %s",
                         who, VG_(name_of_ThreadStatus)(sleepstate));
@@ -338,13 +353,13 @@ static void deinit_BigLock(void)
 }
 
 /* See pub_core_scheduler.h for description */
-void VG_(acquire_BigLock_LL) ( HChar* who )
+void VG_(acquire_BigLock_LL) ( const HChar* who )
 {
    ML_(acquire_sched_lock)(the_BigLock);
 }
 
 /* See pub_core_scheduler.h for description */
-void VG_(release_BigLock_LL) ( HChar* who )
+void VG_(release_BigLock_LL) ( const HChar* who )
 {
    ML_(release_sched_lock)(the_BigLock);
 }
@@ -605,8 +620,9 @@ ThreadId VG_(scheduler_init_phase1) ( void )
 
       VG_(threads)[i].status                    = VgTs_Empty;
       VG_(threads)[i].client_stack_szB          = 0;
-      VG_(threads)[i].client_stack_highest_word = (Addr)NULL;
+      VG_(threads)[i].client_stack_highest_byte = (Addr)NULL;
       VG_(threads)[i].err_disablement_level     = 0;
+      VG_(threads)[i].thread_name               = NULL;
    }
 
    tid_main = VG_(alloc_ThreadState)();
@@ -640,8 +656,8 @@ void VG_(scheduler_init_phase2) ( ThreadId tid_main,
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_size));
 
-   VG_(threads)[tid_main].client_stack_highest_word 
-      = clstack_end + 1 - sizeof(UWord);
+   VG_(threads)[tid_main].client_stack_highest_byte 
+      = clstack_end;
    VG_(threads)[tid_main].client_stack_szB 
       = clstack_size;
 
@@ -753,7 +769,7 @@ static void do_pre_run_checks ( ThreadState* tst )
    vg_assert(VG_IS_8_ALIGNED(offsetof(VexGuestAMD64State,guest_RIP)));
 #  endif
 
-#  if defined(VGA_ppc32) || defined(VGA_ppc64)
+#  if defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
    /* ppc guest_state vector regs must be 16 byte aligned for
       loads/stores.  This is important! */
    vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex.guest_VSR0));
@@ -777,12 +793,21 @@ static void do_pre_run_checks ( ThreadState* tst )
    vg_assert(VG_IS_8_ALIGNED(& tst->arch.vex_shadow2.guest_D1));
 #  endif
 
+#  if defined(VGA_arm64)
+   vg_assert(VG_IS_8_ALIGNED(& tst->arch.vex.guest_X0));
+   vg_assert(VG_IS_8_ALIGNED(& tst->arch.vex_shadow1.guest_X0));
+   vg_assert(VG_IS_8_ALIGNED(& tst->arch.vex_shadow2.guest_X0));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex.guest_Q0));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow1.guest_Q0));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow2.guest_Q0));
+#  endif
+
 #  if defined(VGA_s390x)
    /* no special requirements */
 #  endif
 
-#  if defined(VGA_mips32)
-  /* no special requirements */
+#  if defined(VGA_mips32) || defined(VGA_mips64)
+   /* no special requirements */
 #  endif
 }
 
@@ -939,7 +964,24 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    vg_assert(tst->arch.vex.host_EvC_FAILADDR
              == (HWord)VG_(fnptr_to_fnentry)( &VG_(disp_cp_evcheck_fail)) );
 
-   done_this_time = *dispatchCtrP - ((Int)tst->arch.vex.host_EvC_COUNTER + 1);
+   /* The number of events done this time is the difference between
+      the event counter originally and what it is now.  Except -- if
+      it has gone negative (to -1) then the transition 0 to -1 doesn't
+      correspond to a real executed block, so back it out.  It's like
+      this because the event checks decrement the counter first and
+      check it for negativeness second, hence the 0 to -1 transition
+      causes a bailout and the block it happens in isn't executed. */
+   {
+     Int dispatchCtrAfterwards = (Int)tst->arch.vex.host_EvC_COUNTER;
+     done_this_time = *dispatchCtrP - dispatchCtrAfterwards;
+     if (dispatchCtrAfterwards == -1) {
+        done_this_time--;
+     } else {
+        /* If the generated code drives the counter below -1, something
+           is seriously wrong. */
+        vg_assert(dispatchCtrAfterwards >= 0);
+     }
+   }
 
    vg_assert(done_this_time >= 0);
    bbs_done += (ULong)done_this_time;
@@ -1051,13 +1093,21 @@ static void handle_syscall(ThreadId tid, UInt trc)
       runnable again.  We could take a signal while the
       syscall runs. */
 
-   if (VG_(clo_sanity_level >= 3))
-      VG_(am_do_sync_check)("(BEFORE SYSCALL)",__FILE__,__LINE__);
+   if (VG_(clo_sanity_level) >= 3) {
+      HChar buf[50];
+      VG_(sprintf)(buf, "(BEFORE SYSCALL, tid %d)", tid);
+      Bool ok = VG_(am_do_sync_check)(buf, __FILE__, __LINE__);
+      vg_assert(ok);
+   }
 
    SCHEDSETJMP(tid, jumped, VG_(client_syscall)(tid, trc));
 
-   if (VG_(clo_sanity_level >= 3))
-      VG_(am_do_sync_check)("(AFTER SYSCALL)",__FILE__,__LINE__);
+   if (VG_(clo_sanity_level) >= 3) {
+      HChar buf[50];
+      VG_(sprintf)(buf, "(AFTER SYSCALL, tid %d)", tid);
+      Bool ok = VG_(am_do_sync_check)(buf, __FILE__, __LINE__);
+      vg_assert(ok);
+   }
 
    if (!VG_(is_running_thread)(tid))
       VG_(printf)("tid %d not running; VG_(running_tid)=%d, tid %d status %d\n",
@@ -1178,6 +1228,30 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       }
    }
 
+   if (SimHintiS(SimHint_no_nptl_pthread_stackcache, VG_(clo_sim_hints))
+       && tid != 1) {
+      /* We disable the stack cache the first time we see a thread other
+         than the main thread appearing. At this moment, we are sure the pthread
+         lib loading is done/variable was initialised by pthread lib/... */
+      if (VG_(client__stack_cache_actsize__addr)) {
+         if (*VG_(client__stack_cache_actsize__addr) == 0) {
+            VG_(debugLog)(1,"sched",
+                          "pthread stack cache size disable done"
+                          " via kludge\n");
+            *VG_(client__stack_cache_actsize__addr) = 1000 * 1000 * 1000;
+            /* Set a value big enough to be above the hardcoded maximum stack
+               cache size in glibc, small enough to allow a pthread stack size
+               to be added without risk of overflow. */
+         }
+      } else {
+          VG_(debugLog)(0,"sched",
+                        "WARNING: pthread stack cache cannot be disabled!\n");
+          VG_(clo_sim_hints) &= ~SimHint2S(SimHint_no_nptl_pthread_stackcache);
+          /* Remove SimHint_no_nptl_pthread_stackcache from VG_(clo_sim_hints)
+             to avoid having a msg for all following threads. */
+      }
+   }
+
    /* set the proper running signal mask */
    block_signals();
    
@@ -1228,14 +1302,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 /* For stats purposes only. */
 	 n_scheduling_events_MAJOR++;
 
-	 /* Figure out how many bbs to ask vg_run_innerloop to do.  Note
-	    that it decrements the counter before testing it for zero, so
-	    that if tst->dispatch_ctr is set to N you get at most N-1
-	    iterations.  Also this means that tst->dispatch_ctr must
-	    exceed zero before entering the innerloop.  Also also, the
-	    decrement is done before the bb is actually run, so you
-	    always get at least one decrement even if nothing happens. */
-         // FIXME is this right?
+	 /* Figure out how many bbs to ask vg_run_innerloop to do. */
          dispatch_ctr = SCHEDULING_QUANTUM;
 
 	 /* paranoia ... */
@@ -1280,6 +1347,18 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             next block to be executed should be no-redir.  Then we can
             suspend and resume at any point, which isn't the case at
             the moment. */
+         /* We can't enter a no-redir translation with the dispatch
+            ctr set to zero, for the reasons commented just above --
+            we need to force it to execute right now.  So, if the
+            dispatch ctr is zero, set it to one.  Note that this would
+            have the bad side effect of holding the Big Lock arbitrary
+            long should there be an arbitrarily long sequence of
+            back-to-back no-redir translations to run.  But we assert
+            just below that this translation cannot request another
+            no-redir jump, so we should be safe against that. */
+         if (dispatch_ctr == 0) {
+            dispatch_ctr = 1;
+         }
          handle_noredir_jump( &trc[0], 
                               &dispatch_ctr,
                               tid );
@@ -1291,6 +1370,8 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             can, since handle_noredir_jump will assert if the counter
             is zero on entry. */
          vg_assert(trc[0] != VG_TRC_INNER_COUNTERZERO);
+         /* This asserts the same thing. */
+         vg_assert(dispatch_ctr >= 0);
 
          /* A no-redir translation can't return with a chain-me
             request, since chaining in the no-redir cache is too
@@ -1308,7 +1389,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
 
       case VG_TRC_INNER_FASTMISS:
-	 vg_assert(dispatch_ctr > 0);
+	 vg_assert(dispatch_ctr >= 0);
 	 handle_tt_miss(tid);
 	 break;
 
@@ -1345,8 +1426,8 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             before swapping to another.  That means that short term
             spins waiting for hardware to poke memory won't cause a
             thread swap. */
-	 if (dispatch_ctr > 2000) 
-            dispatch_ctr = 2000;
+         if (dispatch_ctr > 1000)
+            dispatch_ctr = 1000;
 	 break;
 
       case VG_TRC_INNER_COUNTERZERO:
@@ -1367,22 +1448,22 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
 
       case VEX_TRC_JMP_EMWARN: {
-         static Int  counts[EmWarn_NUMBER];
+         static Int  counts[EmNote_NUMBER];
          static Bool counts_initted = False;
-         VexEmWarn ew;
-         HChar*    what;
+         VexEmNote ew;
+         const HChar* what;
          Bool      show;
          Int       q;
          if (!counts_initted) {
             counts_initted = True;
-            for (q = 0; q < EmWarn_NUMBER; q++)
+            for (q = 0; q < EmNote_NUMBER; q++)
                counts[q] = 0;
          }
-         ew   = (VexEmWarn)VG_(threads)[tid].arch.vex.guest_EMWARN;
-         what = (ew < 0 || ew >= EmWarn_NUMBER)
+         ew   = (VexEmNote)VG_(threads)[tid].arch.vex.guest_EMNOTE;
+         what = (ew < 0 || ew >= EmNote_NUMBER)
                    ? "unknown (?!)"
-                   : LibVEX_EmWarn_string(ew);
-         show = (ew < 0 || ew >= EmWarn_NUMBER)
+                   : LibVEX_EmNote_string(ew);
+         show = (ew < 0 || ew >= EmNote_NUMBER)
                    ? True
                    : counts[ew]++ < 3;
          if (show && VG_(clo_show_emwarns) && !VG_(clo_xml)) {
@@ -1395,12 +1476,12 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       }
 
       case VEX_TRC_JMP_EMFAIL: {
-         VexEmWarn ew;
-         HChar*    what;
-         ew   = (VexEmWarn)VG_(threads)[tid].arch.vex.guest_EMWARN;
-         what = (ew < 0 || ew >= EmWarn_NUMBER)
+         VexEmNote ew;
+         const HChar* what;
+         ew   = (VexEmNote)VG_(threads)[tid].arch.vex.guest_EMNOTE;
+         what = (ew < 0 || ew >= EmNote_NUMBER)
                    ? "unknown (?!)"
-                   : LibVEX_EmWarn_string(ew);
+                   : LibVEX_EmNote_string(ew);
          VG_(message)( Vg_UserMsg,
                        "Emulation fatal error -- Valgrind cannot continue:\n");
          VG_(message)( Vg_UserMsg, "  %s\n", what);
@@ -1411,6 +1492,10 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          VG_(exit)(1);
          break;
       }
+
+      case VEX_TRC_JMP_SIGILL:
+         VG_(synth_sigill)(tid, VG_(get_IP)(tid));
+         break;
 
       case VEX_TRC_JMP_SIGTRAP:
          VG_(synth_sigtrap)(tid);
@@ -1424,26 +1509,35 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          VG_(synth_sigbus)(tid);
          break;
 
+      case VEX_TRC_JMP_SIGFPE_INTDIV:
+         VG_(synth_sigfpe)(tid, VKI_FPE_INTDIV);
+         break;
+
+      case VEX_TRC_JMP_SIGFPE_INTOVF:
+         VG_(synth_sigfpe)(tid, VKI_FPE_INTOVF);
+         break;
+
       case VEX_TRC_JMP_NODECODE: {
          Addr addr = VG_(get_IP)(tid);
 
-         VG_(umsg)(
-            "valgrind: Unrecognised instruction at address %#lx.\n", addr);
-         VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
-#define M(a) VG_(umsg)(a "\n");
-   M("Your program just tried to execute an instruction that Valgrind" );
-   M("did not recognise.  There are two possible reasons for this."    );
-   M("1. Your program has a bug and erroneously jumped to a non-code"  );
-   M("   location.  If you are running Memcheck and you just saw a"    );
-   M("   warning about a bad jump, it's probably your program's fault.");
-   M("2. The instruction is legitimate but Valgrind doesn't handle it,");
-   M("   i.e. it's Valgrind's fault.  If you think this is the case or");
-   M("   you are not sure, please let us know and we'll try to fix it.");
-   M("Either way, Valgrind will now raise a SIGILL signal which will"  );
-   M("probably kill your program."                                     );
-#undef M
-
-#if defined(VGA_s390x)
+         if (VG_(clo_sigill_diag)) {
+            VG_(umsg)(
+               "valgrind: Unrecognised instruction at address %#lx.\n", addr);
+            VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
+#        define M(a) VG_(umsg)(a "\n");
+         M("Your program just tried to execute an instruction that Valgrind" );
+         M("did not recognise.  There are two possible reasons for this."    );
+         M("1. Your program has a bug and erroneously jumped to a non-code"  );
+         M("   location.  If you are running Memcheck and you just saw a"    );
+         M("   warning about a bad jump, it's probably your program's fault.");
+         M("2. The instruction is legitimate but Valgrind doesn't handle it,");
+         M("   i.e. it's Valgrind's fault.  If you think this is the case or");
+         M("   you are not sure, please let us know and we'll try to fix it.");
+         M("Either way, Valgrind will now raise a SIGILL signal which will"  );
+         M("probably kill your program."                                     );
+#        undef M
+         }
+#        if defined(VGA_s390x)
          /* Now that the complaint is out we need to adjust the guest_IA. The
             reason is that -- after raising the exception -- execution will
             continue with the insn that follows the invalid insn. As the first
@@ -1455,21 +1549,29 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          UChar byte = ((UChar *)addr)[0];
          UInt  insn_length = ((((byte >> 6) + 1) >> 1) + 1) << 1;
          Addr  next_insn_addr = addr + insn_length;
-
          VG_(set_IP)(tid, next_insn_addr);
-#endif
+#        endif
          VG_(synth_sigill)(tid, addr);
          break;
       }
-      case VEX_TRC_JMP_TINVAL:
+
+      case VEX_TRC_JMP_INVALICACHE:
          VG_(discard_translations)(
-            (Addr64)VG_(threads)[tid].arch.vex.guest_TISTART,
-            VG_(threads)[tid].arch.vex.guest_TILEN,
-            "scheduler(VEX_TRC_JMP_TINVAL)"
+            (Addr64)VG_(threads)[tid].arch.vex.guest_CMSTART,
+            VG_(threads)[tid].arch.vex.guest_CMLEN,
+            "scheduler(VEX_TRC_JMP_INVALICACHE)"
          );
          if (0)
             VG_(printf)("dump translations done.\n");
          break;
+
+      case VEX_TRC_JMP_FLUSHDCACHE: {
+         void* start = (void*)VG_(threads)[tid].arch.vex.guest_CMSTART;
+         SizeT len   = VG_(threads)[tid].arch.vex.guest_CMLEN;
+         VG_(debugLog)(2, "sched", "flush_dcache(%p, %lu)\n", start, len);
+         VG_(flush_dcache)(start, len);
+         break;
+      }
 
       case VG_TRC_INVARIANT_FAILED:
          /* This typically happens if, after running generated code,
@@ -1519,8 +1621,8 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 
       } /* switch (trc) */
 
-      if (0)
-         maybe_show_sb_counts();
+      if (UNLIKELY(VG_(clo_profyle_sbs)) && VG_(clo_profyle_interval) > 0)
+         maybe_show_sb_profile();
    }
 
    if (VG_(clo_trace_sched))
@@ -1569,16 +1671,19 @@ void VG_(nuke_all_threads_except) ( ThreadId me, VgSchedReturnCode src )
 #elif defined(VGA_amd64)
 #  define VG_CLREQ_ARGS       guest_RAX
 #  define VG_CLREQ_RET        guest_RDX
-#elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  define VG_CLREQ_ARGS       guest_GPR4
 #  define VG_CLREQ_RET        guest_GPR3
 #elif defined(VGA_arm)
 #  define VG_CLREQ_ARGS       guest_R4
 #  define VG_CLREQ_RET        guest_R3
+#elif defined(VGA_arm64)
+#  define VG_CLREQ_ARGS       guest_X4
+#  define VG_CLREQ_RET        guest_X3
 #elif defined (VGA_s390x)
 #  define VG_CLREQ_ARGS       guest_r2
 #  define VG_CLREQ_RET        guest_r3
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined(VGA_mips64)
 #  define VG_CLREQ_ARGS       guest_r12
 #  define VG_CLREQ_RET        guest_r11
 #else
@@ -1632,6 +1737,76 @@ static Bool os_client_request(ThreadId tid, UWord *args)
    }
 
    return handled;
+}
+
+
+/* Write out a client message, possibly including a back trace. Return
+   the number of characters written. In case of XML output, the format
+   string as well as any arguments it requires will be XML'ified. 
+   I.e. special characters such as the angle brackets will be translated
+   into proper escape sequences. */
+static
+Int print_client_message( ThreadId tid, const HChar *format,
+                          va_list *vargsp, Bool include_backtrace)
+{
+   Int count;
+
+   if (VG_(clo_xml)) {
+      /* Translate the format string as follows:
+         <  -->  &lt;
+         >  -->  &gt;
+         &  -->  &amp;
+         %s -->  %pS
+         Yes, yes, it's simplified but in synch with 
+         myvprintf_str_XML_simplistic and VG_(debugLog_vprintf).
+      */
+
+      /* Allocate a buffer that is for sure large enough. */
+      HChar xml_format[VG_(strlen)(format) * 5 + 1];
+
+      const HChar *p;
+      HChar *q = xml_format;
+
+      for (p = format; *p; ++p) {
+         switch (*p) {
+         case '<': VG_(strcpy)(q, "&lt;");  q += 4; break;
+         case '>': VG_(strcpy)(q, "&gt;");  q += 4; break;
+         case '&': VG_(strcpy)(q, "&amp;"); q += 5; break;
+         case '%':
+            /* Careful: make sure %%s stays %%s */
+            *q++ = *p++;
+            if (*p == 's') {
+              *q++ = 'p';
+              *q++ = 'S';
+            } else {
+              *q++ = *p;
+            }
+            break;
+
+         default:
+            *q++ = *p;
+            break;
+         }
+      }
+      *q = '\0';
+
+      VG_(printf_xml)( "<clientmsg>\n" );
+      VG_(printf_xml)( "  <tid>%d</tid>\n", tid );
+      VG_(printf_xml)( "  <text>" );
+      count = VG_(vprintf_xml)( xml_format, *vargsp );
+      VG_(printf_xml)( "  </text>\n" );
+   } else {
+      count = VG_(vmessage)( Vg_ClientMsg, format, *vargsp );
+      VG_(message_flush)();
+   }
+
+   if (include_backtrace)
+      VG_(get_and_pp_StackTrace)( tid, VG_(clo_backtrace_size) );
+   
+   if (VG_(clo_xml))
+      VG_(printf_xml)( "</clientmsg>\n" );
+
+   return count;
 }
 
 
@@ -1689,6 +1864,7 @@ void do_client_request ( ThreadId tid )
          break;
 
       case VG_USERREQ__PRINTF: {
+         const HChar* format = (HChar *)arg[1];
          /* JRS 2010-Jan-28: this is DEPRECATED; use the
             _VALIST_BY_REF version instead */
          if (sizeof(va_list) != sizeof(UWord))
@@ -1699,13 +1875,14 @@ void do_client_request ( ThreadId tid )
          } u;
          u.uw = (unsigned long)arg[2];
          Int count = 
-            VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], u.vargs );
-         VG_(message_flush)();
+            print_client_message( tid, format, &u.vargs,
+                                  /* include_backtrace */ False );
          SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
       case VG_USERREQ__PRINTF_BACKTRACE: {
+         const HChar* format = (HChar *)arg[1];
          /* JRS 2010-Jan-28: this is DEPRECATED; use the
             _VALIST_BY_REF version instead */
          if (sizeof(va_list) != sizeof(UWord))
@@ -1716,28 +1893,29 @@ void do_client_request ( ThreadId tid )
          } u;
          u.uw = (unsigned long)arg[2];
          Int count =
-            VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], u.vargs );
-         VG_(message_flush)();
-         VG_(get_and_pp_StackTrace)( tid, VG_(clo_backtrace_size) );
+            print_client_message( tid, format, &u.vargs,
+                                  /* include_backtrace */ True );
          SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
       case VG_USERREQ__PRINTF_VALIST_BY_REF: {
+         const HChar* format = (HChar *)arg[1];
          va_list* vargsp = (va_list*)arg[2];
-         Int count = 
-            VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], *vargsp );
-         VG_(message_flush)();
+         Int count =
+            print_client_message( tid, format, vargsp,
+                                  /* include_backtrace */ False );
+
          SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
       case VG_USERREQ__PRINTF_BACKTRACE_VALIST_BY_REF: {
+         const HChar* format = (HChar *)arg[1];
          va_list* vargsp = (va_list*)arg[2];
          Int count =
-            VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], *vargsp );
-         VG_(message_flush)();
-         VG_(get_and_pp_StackTrace)( tid, VG_(clo_backtrace_size) );
+            print_client_message( tid, format, vargsp,
+                                  /* include_backtrace */ True );
          SET_CLREQ_RETVAL( tid, count );
          break;
       }
@@ -1745,7 +1923,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__INTERNAL_PRINTF_VALIST_BY_REF: {
          va_list* vargsp = (va_list*)arg[2];
          Int count = 
-            VG_(vmessage)( Vg_DebugMsg, (char *)arg[1], *vargsp );
+            VG_(vmessage)( Vg_DebugMsg, (HChar *)arg[1], *vargsp );
          VG_(message_flush)();
          SET_CLREQ_RETVAL( tid, count );
          break;
@@ -1819,7 +1997,7 @@ void do_client_request ( ThreadId tid )
 
       case VG_USERREQ__MAP_IP_TO_SRCLOC: {
          Addr   ip    = arg[1];
-         UChar* buf64 = (UChar*)arg[2];
+         HChar* buf64 = (HChar*)arg[2];
 
          VG_(memset)(buf64, 0, 64);
          UInt linenum = 0;
@@ -1862,6 +2040,13 @@ void do_client_request ( ThreadId tid )
          break;
       }
 
+      case VG_USERREQ__GDB_MONITOR_COMMAND: {
+         UWord ret;
+         ret = (UWord) VG_(client_monitor_command) ((HChar*)arg[1]);
+         SET_CLREQ_RETVAL(tid, ret);
+         break;
+      }
+
       case VG_USERREQ__MALLOCLIKE_BLOCK:
       case VG_USERREQ__RESIZEINPLACE_BLOCK:
       case VG_USERREQ__FREELIKE_BLOCK:
@@ -1872,6 +2057,10 @@ void do_client_request ( ThreadId tid )
          } else {
             goto my_default;
          }
+
+      case VG_USERREQ__VEX_INIT_FOR_IRI:
+         LibVEX_InitIRI ( (IRICB *)arg[1] );
+         break;
 
       default:
        my_default:
@@ -1892,8 +2081,8 @@ void do_client_request ( ThreadId tid )
 	    if (!whined && VG_(clo_verbosity) > 2) {
                // Allow for requests in core, but defined by tools, which
                // have 0 and 0 in their two high bytes.
-               Char c1 = (arg[0] >> 24) & 0xff;
-               Char c2 = (arg[0] >> 16) & 0xff;
+               HChar c1 = (arg[0] >> 24) & 0xff;
+               HChar c2 = (arg[0] >> 16) & 0xff;
                if (c1 == 0) c1 = '_';
                if (c2 == 0) c2 = '_';
 	       VG_(message)(Vg_UserMsg, "Warning:\n"
@@ -1943,8 +2132,6 @@ static
 void scheduler_sanity ( ThreadId tid )
 {
    Bool bad = False;
-   static UInt lasttime = 0;
-   UInt now;
    Int lwpid = VG_(gettid)();
 
    if (!VG_(is_running_thread)(tid)) {
@@ -1969,14 +2156,20 @@ void scheduler_sanity ( ThreadId tid )
       bad = True;
    }
 
-   /* Periodically show the state of all threads, for debugging
-      purposes. */
-   now = VG_(read_millisecond_timer)();
-   if (0 && (!bad) && (lasttime + 4000/*ms*/ <= now)) {
-      lasttime = now;
-      VG_(printf)("\n------------ Sched State at %d ms ------------\n",
-                  (Int)now);
-      VG_(show_sched_status)();
+   if (0) {
+      /* Periodically show the state of all threads, for debugging
+         purposes. */
+      static UInt lasttime = 0;
+      UInt now;
+      now = VG_(read_millisecond_timer)();
+      if ((!bad) && (lasttime + 4000/*ms*/ <= now)) {
+         lasttime = now;
+         VG_(printf)("\n------------ Sched State at %d ms ------------\n",
+                     (Int)now);
+         VG_(show_sched_status)(True,  // host_stacktrace
+                                True,  // stack_usage
+                                True); // exited_threads);
+      }
    }
 
    /* core_panic also shows the sched status, which is why we don't

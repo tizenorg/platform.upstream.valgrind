@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -74,20 +74,17 @@
    completely unmodified.  We use vg_libciface.h as a way to
    impedance-match the libiberty code into our own framework.
 
-   The current code is from libiberty in the gcc tree, gcc svn
-   r181975, dated 12 Dec 2011 (when the gcc trunk was in Stage 3
-   leading up to a gcc-4.7 release).  As of r141363, libiberty is LGPL
-   2.1, which AFAICT is compatible with "GPL 2 or later" and so is OK
-   for inclusion in Valgrind.
+   The libiberty code included here was taken from the GCC repository
+   and is released under the LGPL 2.1 license, which AFAICT is compatible
+   with "GPL 2 or later" and so is OK for inclusion in Valgrind.
 
-   To update to a newer libiberty, it might be simplest to svn diff
-   the gcc tree libibery against r181975 and then apply those diffs
-   here. */
+   To update to a newer libiberty, use the "update-demangler" script
+   which is included in the valgrind repository. */
 
 /* This is the main, standard demangler entry point. */
 
 void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
-                     Char* orig, Char* result, Int result_size )
+                     HChar* orig, HChar* result, Int result_size )
 {
 #  define N_ZBUF 4096
    HChar* demangled = NULL;

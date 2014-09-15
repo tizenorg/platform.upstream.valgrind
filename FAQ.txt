@@ -1,8 +1,8 @@
 
 
 Valgrind FAQ
-Release 3.8.0 10 August 2012
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Release 3.10.0 10 September 2014
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Table of Contents
 1. Background
@@ -17,9 +17,9 @@ Table of Contents
 ------------------------------------------------------------------------
 
 1.1. How do you pronounce "Valgrind"? 
-The "Val" as in the world "value". The "grind" is pronounced with a 
-short 'i' -- ie. "grinned" (rhymes with "tinned") rather than "grined" 
-(rhymes with "find"). 
+The "Val" as in the word "value". The "grind" is pronounced with a short 
+'i' -- ie. "grinned" (rhymes with "tinned") rather than "grined" (rhymes 
+with "find"). 
 
 Don't feel bad: almost everyone gets it wrong at first. 
 ------------------------------------------------------------------------
@@ -300,12 +300,20 @@ on that port:
 Obviously you have to start the listener process first. See the manual 
 for more details. 
 
-Second, if your program is statically linked, most Valgrind tools won't 
-work as well, because they won't be able to replace certain functions, 
-such as malloc, with their own versions. A key indicator of this is if 
-Memcheck says: All heap blocks were freed -- no leaks are possible when 
-you know your program calls malloc. The workaround is to avoid 
-statically linking your program. 
+Second, if your program is statically linked, most Valgrind tools will 
+only work well if they are able to replace certain functions, such as 
+malloc, with their own versions. By default, statically linked malloc 
+functions are not replaced. A key indicator of this is if Memcheck says: 
+All heap blocks were freed -- no leaks are possible when you know your 
+program calls malloc. The workaround is to use the option 
+--soname-synonyms=somalloc=NONE or to avoid statically linking your 
+program. 
+
+There will also be no replacement if you use an alternative malloc 
+library such as tcmalloc, jemalloc, ... In such a case, the option 
+--soname-synonyms=somalloc=zzzz (where zzzz is the soname of the 
+alternative malloc library) will allow Valgrind to replace the 
+functions. 
 
 ------------------------------------------------------------------------
 

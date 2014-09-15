@@ -2,7 +2,7 @@
    needed for interfacing the Valgrind gdbserver with the Valgrind
    guest.
 
-   Copyright (C) 2011
+   Copyright (C) 2011, 2012
    Free Software Foundation, Inc.
 
    This file has been inspired from a file that is part of GDB.
@@ -25,6 +25,9 @@
 
 #ifndef VALGRIND_LOW_H
 #define VALGRIND_LOW_H
+
+#include "pub_core_basics.h"    // ThreadId
+#include "server.h"             // CORE_ADDR
 
 /* defines the characteristics of the "low" valgrind target architecture.
    In other words, struct valgrind_target_ops defines the functions and 
@@ -63,16 +66,46 @@ struct valgrind_target_ops
       including the two shadow registers sets.
       This is mandatory to use the option --vgdb-shadow-registers=yes. 
       Returns NULL if there is no target xml file*/
-   char* (*target_xml) (Bool shadow_mode);
+   const char* (*target_xml) (Bool shadow_mode);
+
+   /* Returns the address in the thread control block where dtv is found.
+      Return NULL if an error occurs or no support for tls/dtv is available.
+      Note that the addressability of the returned result has not been
+      verified. In other words, target_get_dtv just adds some magic
+      offset to the arch specific thread register or thread pointer or ... 
+      
+      The implementation of this is of course depending on the arch
+      but also depends on the way pthread lib arranges its data.
+      For background info about tls handling, read
+      'ELF Handling For Thread-Local Storage'
+      http://www.akkadia.org/drepper/tls.pdf
+      (slightly obsolete e.g. the size of a dtv entry is 2 words now).
+      The reference is the glibc source, in particular the arch specific
+      file tls.h.
+
+      For platforms where the dtv is located in the tcb, the magic offset
+      to add to the thread pointer/register/... can be found by doing:
+        cd none/tests
+        gdb ./tls
+        set debug-file-directory /usr/lib/debug # or equivalent
+        start
+        p &((struct pthread*)0x0)->header.dtv
+      Currently the dtv offset is hardcoded, based on the assumption
+      that this is relatively stable. If that would be false, then
+      getoff-<platform> should be modified to output this offset e.g.
+      depending on the glibc version. */
+   CORE_ADDR** (*target_get_dtv)(ThreadState *tst);
 
 };
 
 extern void x86_init_architecture (struct valgrind_target_ops *target);
 extern void amd64_init_architecture (struct valgrind_target_ops *target);
 extern void arm_init_architecture (struct valgrind_target_ops *target);
+extern void arm64_init_architecture (struct valgrind_target_ops *target);
 extern void ppc32_init_architecture (struct valgrind_target_ops *target);
 extern void ppc64_init_architecture (struct valgrind_target_ops *target);
 extern void s390x_init_architecture (struct valgrind_target_ops *target);
 extern void mips32_init_architecture (struct valgrind_target_ops *target);
+extern void mips64_init_architecture (struct valgrind_target_ops *target);
 
 #endif

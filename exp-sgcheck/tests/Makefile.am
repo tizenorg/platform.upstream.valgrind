@@ -9,6 +9,7 @@ EXTRA_DIST = \
 	bad_percentify.stdout.exp bad_percentify.stderr.exp-glibc28-amd64 \
 	globalerr.vgtest globalerr.stdout.exp \
 	globalerr.stderr.exp-glibc28-amd64 \
+	globalerr.stderr.exp-gcc491-amd64 \
 	hackedbz2.vgtest hackedbz2.stdout.exp \
 	hackedbz2.stderr.exp-glibc28-amd64 \
 	hsg.vgtest hsg.stdout.exp hsg.stderr.exp \
@@ -39,6 +40,7 @@ AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 # least some optimisation.
 hackedbz2_CFLAGS	= $(AM_CFLAGS) -O -Wno-inline
 
+globalerr_CFLAGS        = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 # C ones
 #pth_create_LDADD	= -lpthread
 

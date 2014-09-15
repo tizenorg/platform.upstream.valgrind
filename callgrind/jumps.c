@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -28,15 +28,13 @@
 
 #include "global.h"
 
-#define N_JCC_INITIAL_ENTRIES  4437
-
 /*------------------------------------------------------------*/
 /*--- Jump Cost Center (JCC) operations, including Calls   ---*/
 /*------------------------------------------------------------*/
 
 #define N_JCC_INITIAL_ENTRIES  4437
 
-jcc_hash current_jccs;
+static jcc_hash current_jccs;
 
 void CLG_(init_jcc_hash)(jcc_hash* jccs)
 {

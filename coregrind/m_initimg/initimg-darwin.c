@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,7 +62,7 @@
 static void load_client ( /*OUT*/ExeInfo* info, 
                           /*OUT*/Addr*    client_ip)
 {
-   HChar* exe_name;
+   const HChar* exe_name;
    Int    ret;
    SysRes res;
 
@@ -116,11 +116,11 @@ static void load_client ( /*OUT*/ExeInfo* info,
 */
 static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 {
-   HChar* preload_core    = "vgpreload_core";
-   HChar* ld_preload      = "DYLD_INSERT_LIBRARIES=";
-   HChar* dyld_cache      = "DYLD_SHARED_REGION=";
-   HChar* dyld_cache_value= "avoid";
-   HChar* v_launcher      = VALGRIND_LAUNCHER "=";
+   const HChar* preload_core    = "vgpreload_core";
+   const HChar* ld_preload      = "DYLD_INSERT_LIBRARIES=";
+   const HChar* dyld_cache      = "DYLD_SHARED_REGION=";
+   const HChar* dyld_cache_value= "avoid";
+   const HChar* v_launcher      = VALGRIND_LAUNCHER "=";
    Int    ld_preload_len  = VG_(strlen)( ld_preload );
    Int    dyld_cache_len  = VG_(strlen)( dyld_cache );
    Int    v_launcher_len  = VG_(strlen)( v_launcher );
@@ -259,10 +259,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 /*====================================================================*/
 
 /* Add a string onto the string table, and return its address */
-static char *copy_str(char **tab, const char *str)
+static HChar *copy_str(HChar **tab, const HChar *str)
 {
-   char *cp = *tab;
-   char *orig = cp;
+   HChar *cp = *tab;
+   HChar *orig = cp;
 
    while(*str)
       *cp++ = *str++;
@@ -316,14 +316,14 @@ static char *copy_str(char **tab, const char *str)
 
 static 
 Addr setup_client_stack( void*  init_sp,
-                         char** orig_envp, 
+                         HChar** orig_envp, 
                          const ExeInfo* info,
                          Addr   clstack_end,
                          SizeT  clstack_max_size )
 {
-   char **cpp;
-   char *strtab;		/* string table */
-   char *stringbase;
+   HChar **cpp;
+   HChar *strtab;		/* string table */
+   HChar *stringbase;
    Addr *ptr;
    unsigned stringsize;		/* total size of strings in bytes */
    unsigned auxsize;		/* total size of auxv in bytes */
@@ -333,7 +333,6 @@ Addr setup_client_stack( void*  init_sp,
    Addr client_SP;	        /* client stack base (initial SP) */
    Addr clstack_start;
    Int i;
-   Bool have_exename;
 
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
    vg_assert( VG_(args_for_client) );
@@ -343,7 +342,6 @@ Addr setup_client_stack( void*  init_sp,
    /* first of all, work out how big the client stack will be */
    stringsize   = 0;
    auxsize = 0;
-   have_exename = VG_(args_the_exename) != NULL;
 
    /* paste on the extra args if the loader needs them (ie, the #! 
       interpreter and its argument) */
@@ -358,8 +356,7 @@ Addr setup_client_stack( void*  init_sp,
    }
 
    /* now scan the args we're given... */
-   if (have_exename)
-      stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
+   stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       argc++;
@@ -387,33 +384,33 @@ Addr setup_client_stack( void*  init_sp,
    /* OK, now we know how big the client stack is */
    stacksize =
       sizeof(Word) +                          /* argc */
-      (have_exename ? sizeof(char **) : 0) +  /* argc[0] == exename */
-      sizeof(char **)*argc +                  /* argv */
-      sizeof(char **) +	                      /* terminal NULL */
-      sizeof(char **)*envc +                  /* envp */
-      sizeof(char **) +	                      /* terminal NULL */
+      sizeof(HChar **) +                      /* argc[0] == exename */
+      sizeof(HChar **)*argc +                 /* argv */
+      sizeof(HChar **) +                      /* terminal NULL */
+      sizeof(HChar **)*envc +                 /* envp */
+      sizeof(HChar **) +                      /* terminal NULL */
       auxsize +                               /* auxv */
       VG_ROUNDUP(stringsize, sizeof(Word));   /* strings (aligned) */
 
    if (0) VG_(printf)("stacksize = %d\n", stacksize);
 
    /* client_SP is the client's stack pointer */
-   client_SP = clstack_end - stacksize;
+   client_SP = clstack_end + 1 - stacksize;
    client_SP = VG_ROUNDDN(client_SP, 32); /* make stack 32 byte aligned */
 
    /* base of the string table (aligned) */
-   stringbase = strtab = (char *)clstack_end 
+   stringbase = strtab = (HChar *)clstack_end 
                          - VG_ROUNDUP(stringsize, sizeof(int));
 
    /* The max stack size */
    clstack_max_size = VG_PGROUNDUP(clstack_max_size);
 
    /* Darwin stack is chosen by the ume loader */
-   clstack_start = clstack_end - clstack_max_size;
+   clstack_start = clstack_end + 1 - clstack_max_size;
 
    /* Record stack extent -- needed for stack-change code. */
    /* GrP fixme really? */
-   VG_(clstk_base) = clstack_start;
+   VG_(clstk_start_base) = clstack_start;
    VG_(clstk_end)  = clstack_end;
 
    if (0)
@@ -435,7 +432,7 @@ Addr setup_client_stack( void*  init_sp,
    if (info->dynamic) *ptr++ = info->text;
 
    /* --- client argc --- */
-   *ptr++ = (Addr)(argc + (have_exename ? 1 : 0));
+   *ptr++ = (Addr)(argc + 1);
 
    /* --- client argv --- */
    if (info->interp_name) {
@@ -447,8 +444,7 @@ Addr setup_client_stack( void*  init_sp,
       VG_(free)(info->interp_args);
    }
 
-   if (have_exename)
-      *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
+   *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       *ptr++ = (Addr)copy_str(
@@ -459,7 +455,7 @@ Addr setup_client_stack( void*  init_sp,
    *ptr++ = 0;
 
    /* --- envp --- */
-   VG_(client_envp) = (Char **)ptr;
+   VG_(client_envp) = (HChar **)ptr;
    for (cpp = orig_envp; cpp && *cpp; ptr++, cpp++)
       *ptr = (Addr)copy_str(&strtab, *cpp);
    *ptr++ = 0;
@@ -486,6 +482,15 @@ Addr setup_client_stack( void*  init_sp,
 
 static void record_system_memory(void)
 {
+  /* JRS 2014-Jul-08: this messes up the sync checker, because the
+     information that the kernel gives us doesn't include anything
+     about the commpage mapping.  This functionality has therefore
+     been moved to m_main.c, valgrind_main(), section "Tell the tool
+     about the initial client memory permissions".  See comments there
+     for rationale. */
+   return;
+   /*NOTREACHED*/
+
    /* Tell aspacem where the client's kernel commpage is */
 #if defined(VGA_amd64)
    /* commpage 0x7fff:ffe00000+ - not in vm_region */
@@ -513,6 +518,8 @@ static void record_system_memory(void)
 IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
 {
    ExeInfo info;
+   VG_(memset)( &info, 0, sizeof(info) );
+
    HChar** env = NULL;
 
    IIFinaliseImageInfo iifii;
@@ -543,18 +550,18 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
    //   p: load_client()     [for 'info']
    //   p: fix_environment() [for 'env']
    //--------------------------------------------------------------
-   iicii.clstack_top = info.stack_end - 1;
-   iifii.clstack_max_size = info.stack_end - info.stack_start;
+   iicii.clstack_end = info.stack_end;
+   iifii.clstack_max_size = info.stack_end - info.stack_start + 1;
    
    iifii.initial_client_SP = 
        setup_client_stack( iicii.argv - 1, env, &info, 
-                           iicii.clstack_top, iifii.clstack_max_size );
+                           iicii.clstack_end, iifii.clstack_max_size );
 
    VG_(free)(env);
 
    VG_(debugLog)(2, "initimg",
                  "Client info: "
-                 "initial_IP=%p initial_SP=%p stack=%p..%p\n", 
+                 "initial_IP=%p initial_SP=%p stack=[%p..%p]\n", 
                  (void*)(iifii.initial_client_IP),
                  (void*)(iifii.initial_client_SP),
                  (void*)(info.stack_start), 

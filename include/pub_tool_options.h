@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 #ifndef __PUB_TOOL_OPTIONS_H
 #define __PUB_TOOL_OPTIONS_H
 
+#include "pub_tool_basics.h"     // for VG_ macro
 #include "libvex.h"              // for VexControl
 
 
@@ -51,7 +52,7 @@
 #define VG_BOOL_CLO(qq_arg, qq_option, qq_var) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
     ({ \
-      Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
       if      VG_STREQ(val, "yes") (qq_var) = True; \
       else if VG_STREQ(val, "no")  (qq_var) = False; \
       else VG_(fmsg_bad_option)(qq_arg, "Invalid boolean value '%s'" \
@@ -64,18 +65,43 @@
 #define VG_STR_CLO(qq_arg, qq_option, qq_var) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
     ({ \
-      Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
       (qq_var) = val; \
       True; \
     }) \
    )
 
+// UInt enum set arg, eg. --foo=fubar,bar,baz or --foo=none
+// or --foo=all  (if qq_all is True)
+#define VG_USETGEN_CLO(qq_arg, qq_option, qq_vals, qq_var, qq_all) \
+   (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
+    ({ \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      if (!VG_(parse_enum_set)(qq_vals, \
+                               qq_all,/*allow_all*/ \
+                               val, \
+                               &(qq_var))) \
+            VG_(fmsg_bad_option)(qq_arg, "%s is an invalid %s set\n", \
+                                 val, qq_option+2); \
+      True; \
+     }) \
+    )
+
+// UInt enum set arg, eg. --foo=fubar,bar,baz or --foo=none or --foo=all
+#define VG_USET_CLO(qq_arg, qq_option, qq_vals, qq_var) \
+   VG_USETGEN_CLO((qq_arg), qq_option, (qq_vals), (qq_var), True)
+
+/* Same as VG_USET_CLO but not allowing --foo=all.
+   To be used when some or all of the enum set are mutually eXclusive. */
+#define VG_USETX_CLO(qq_arg, qq_option, qq_vals, qq_var) \
+   VG_USETGEN_CLO((qq_arg), qq_option, (qq_vals), (qq_var), False)
+
 // Unbounded integer arg, eg. --foo=10
 #define VG_INT_CLO(qq_arg, qq_option, qq_var) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
     ({ \
-      Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
-      Char* s; \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      HChar* s; \
       Long n = VG_(strtoll10)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness, or overflow. */ \
@@ -89,8 +115,8 @@
 #define VG_BINTN_CLO(qq_base, qq_arg, qq_option, qq_var, qq_lo, qq_hi) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
     ({ \
-      Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
-      Char* s; \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      HChar* s; \
       Long n = VG_(strtoll##qq_base)( val, &s ); \
       (qq_var) = n; \
       /* MMM: separate the two cases, and explain the problem;  likewise */ \
@@ -122,8 +148,8 @@
 #define VG_DBL_CLO(qq_arg, qq_option, qq_var) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
     ({ \
-      Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
-      Char* s; \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      HChar* s; \
       double n = VG_(strtod)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness */ \
@@ -154,6 +180,14 @@ extern Bool VG_(clo_stats);
    can be changed dynamically.*/
 extern Int VG_(clo_vgdb_error);
 
+/* If user has provided the --vgdb-prefix command line option,
+   VG_(arg_vgdb_prefix) points at the provided argument (including the
+   '--vgdb-prefix=' string).
+   Otherwise, it is NULL.
+   Typically, this is used by tools to produce user message with the
+   expected vgdb prefix argument, if the user has changed the default. */
+extern const HChar *VG_(arg_vgdb_prefix);
+
 /* Emit all messages as XML? default: NO */
 /* If clo_xml is set, various other options are set in a non-default
    way.  See vg_main.c and mc_main.c. */
@@ -161,13 +195,13 @@ extern Bool VG_(clo_xml);
 
 /* An arbitrary user-supplied string which is copied into the
    XML output, in between <usercomment> tags. */
-extern HChar* VG_(clo_xml_user_comment);
+extern const HChar* VG_(clo_xml_user_comment);
 
 /* Vex iropt control.  Tool-visible so tools can make Vex optimise
    less aggressively if that is needed (callgrind needs this). */
 extern VexControl VG_(clo_vex_control);
 
-/* Number of parents of a backtrace.  Default: 8.  */
+/* Number of parents of a backtrace.  Default: 12  */
 extern Int   VG_(clo_backtrace_size);
 
 /* Continue stack traces below main()?  Default: NO */
@@ -192,7 +226,8 @@ extern Bool VG_(clo_show_below_main);
    merely used in printing error messages, if an error message needs
    to be printed due to malformedness of the "format" argument.
 */
-extern Char* VG_(expand_file_name)(Char* option_name, Char* format);
+extern HChar* VG_(expand_file_name)(const HChar* option_name,
+                                    const HChar* format);
 
 #endif   // __PUB_TOOL_OPTIONS_H
 

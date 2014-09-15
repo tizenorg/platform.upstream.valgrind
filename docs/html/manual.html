@@ -2,8 +2,8 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
 <title>Valgrind User Manual</title>
-<link rel="stylesheet" href="vg_basic.css" type="text/css">
-<meta name="generator" content="DocBook XSL Stylesheets V1.75.2">
+<link rel="stylesheet" type="text/css" href="vg_basic.css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.78.1">
 <link rel="home" href="index.html" title="Valgrind Documentation">
 <link rel="up" href="index.html" title="Valgrind Documentation">
 <link rel="prev" href="quick-start.html" title="The Valgrind Quick Start Guide">
@@ -17,22 +17,22 @@
 <th align="center" valign="middle">Valgrind Documentation</th>
 <td width="22px" align="center" valign="middle"><a accesskey="n" href="manual-intro.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
 </tr></table></div>
-<div class="book" title="Valgrind User Manual">
+<div class="book">
 <div class="titlepage">
 <div>
 <div><h1 class="title">
 <a name="manual"></a>Valgrind User Manual</h1></div>
-<div><p class="releaseinfo">Release 3.8.0 10 August 2012</p></div>
-<div><p class="copyright">Copyright © 2000-2012 <a class="ulink" href="http://www.valgrind.org/info/developers.html" target="_top">Valgrind Developers</a></p></div>
-<div><div class="legalnotice" title="Legal Notice">
-<a name="id560383"></a><p>Email: <a class="ulink" href="mailto:valgrind@valgrind.org" target="_top">valgrind@valgrind.org</a></p>
+<div><p class="releaseinfo">Release 3.10.0 10 September 2014</p></div>
+<div><p class="copyright">Copyright © 2000-2014 <a class="ulink" href="http://www.valgrind.org/info/developers.html" target="_top">Valgrind Developers</a></p></div>
+<div><div class="legalnotice">
+<a name="idp12984208"></a><p>Email: <a class="ulink" href="mailto:valgrind@valgrind.org" target="_top">valgrind@valgrind.org</a></p>
 </div></div>
 </div>
 <hr>
 </div>
 <div class="toc">
 <p><b>Table of Contents</b></p>
-<dl>
+<dl class="toc">
 <dt><span class="chapter"><a href="manual-intro.html">1. Introduction</a></span></dt>
 <dd><dl>
 <dt><span class="sect1"><a href="manual-intro.html#manual-intro.overview">1.1. An Overview of Valgrind</a></span></dt>
@@ -104,7 +104,8 @@
 <dt><span class="sect2"><a href="mc-manual.html#mc-manual.rudefn">4.2.5. When a heap block is freed with an inappropriate deallocation
 function</a></span></dt>
 <dt><span class="sect2"><a href="mc-manual.html#mc-manual.overlap">4.2.6. Overlapping source and destination blocks</a></span></dt>
-<dt><span class="sect2"><a href="mc-manual.html#mc-manual.leaks">4.2.7. Memory leak detection</a></span></dt>
+<dt><span class="sect2"><a href="mc-manual.html#mc-manual.fishyvalue">4.2.7. Fishy argument values</a></span></dt>
+<dt><span class="sect2"><a href="mc-manual.html#mc-manual.leaks">4.2.8. Memory leak detection</a></span></dt>
 </dl></dd>
 <dt><span class="sect1"><a href="mc-manual.html#mc-manual.options">4.3. Memcheck Command-Line Options</a></span></dt>
 <dt><span class="sect1"><a href="mc-manual.html#mc-manual.suppfiles">4.4. Writing suppression files</a></span></dt>
@@ -148,18 +149,19 @@ function</a></span></dt>
 </dl></dd>
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.cgopts">5.3. Cachegrind Command-line Options</a></span></dt>
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.annopts">5.4. cg_annotate Command-line Options</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.diffopts">5.5. cg_diff Command-line Options</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.acting-on">5.6. Acting on Cachegrind's Information</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.sim-details">5.7. Simulation Details</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.mergeopts">5.5. cg_merge Command-line Options</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.diffopts">5.6. cg_diff Command-line Options</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.acting-on">5.7. Acting on Cachegrind's Information</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.sim-details">5.8. Simulation Details</a></span></dt>
 <dd><dl>
-<dt><span class="sect2"><a href="cg-manual.html#cache-sim">5.7.1. Cache Simulation Specifics</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#branch-sim">5.7.2. Branch Simulation Specifics</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.annopts.accuracy">5.7.3. Accuracy</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cache-sim">5.8.1. Cache Simulation Specifics</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#branch-sim">5.8.2. Branch Simulation Specifics</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.annopts.accuracy">5.8.3. Accuracy</a></span></dt>
 </dl></dd>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.impl-details">5.8. Implementation Details</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.impl-details">5.9. Implementation Details</a></span></dt>
 <dd><dl>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.how-cg-works">5.8.1. How Cachegrind Works</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.file-format">5.8.2. Cachegrind Output File Format</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.how-cg-works">5.9.1. How Cachegrind Works</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.file-format">5.9.2. Cachegrind Output File Format</a></span></dt>
 </dl></dd>
 </dl></dd>
 <dt><span class="chapter"><a href="cl-manual.html">6. Callgrind: a call-graph generating cache and branch prediction profiler</a></span></dt>
@@ -204,8 +206,9 @@ function</a></span></dt>
 </dl></dd>
 <dt><span class="sect1"><a href="hg-manual.html#hg-manual.effective-use">7.5. Hints and Tips for Effective Use of Helgrind</a></span></dt>
 <dt><span class="sect1"><a href="hg-manual.html#hg-manual.options">7.6. Helgrind Command-line Options</a></span></dt>
-<dt><span class="sect1"><a href="hg-manual.html#hg-manual.client-requests">7.7. Helgrind Client Requests</a></span></dt>
-<dt><span class="sect1"><a href="hg-manual.html#hg-manual.todolist">7.8. A To-Do List for Helgrind</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.monitor-commands">7.7. Helgrind Monitor Commands</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.client-requests">7.8. Helgrind Client Requests</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.todolist">7.9. A To-Do List for Helgrind</a></span></dt>
 </dl></dd>
 <dt><span class="chapter"><a href="drd-manual.html">8. DRD: a thread error detector</a></span></dt>
 <dd><dl>
@@ -223,13 +226,14 @@ function</a></span></dt>
 <dt><span class="sect2"><a href="drd-manual.html#drd-manual.lock-contention">8.2.3. Detected Errors: Lock Contention</a></span></dt>
 <dt><span class="sect2"><a href="drd-manual.html#drd-manual.api-checks">8.2.4. Detected Errors: Misuse of the POSIX threads API</a></span></dt>
 <dt><span class="sect2"><a href="drd-manual.html#drd-manual.clientreqs">8.2.5. Client Requests</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.gnome">8.2.6. Debugging GNOME Programs</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.boost.thread">8.2.7. Debugging Boost.Thread Programs</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.openmp">8.2.8. Debugging OpenMP Programs</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.cust-mem-alloc">8.2.9. DRD and Custom Memory Allocators</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.drd-versus-memcheck">8.2.10. DRD Versus Memcheck</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.resource-requirements">8.2.11. Resource Requirements</a></span></dt>
-<dt><span class="sect2"><a href="drd-manual.html#drd-manual.effective-use">8.2.12. Hints and Tips for Effective Use of DRD</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.C++11">8.2.6. Debugging C++11 Programs</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.gnome">8.2.7. Debugging GNOME Programs</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.boost.thread">8.2.8. Debugging Boost.Thread Programs</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.openmp">8.2.9. Debugging OpenMP Programs</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.cust-mem-alloc">8.2.10. DRD and Custom Memory Allocators</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.drd-versus-memcheck">8.2.11. DRD Versus Memcheck</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.resource-requirements">8.2.12. Resource Requirements</a></span></dt>
+<dt><span class="sect2"><a href="drd-manual.html#drd-manual.effective-use">8.2.13. Hints and Tips for Effective Use of DRD</a></span></dt>
 </dl></dd>
 <dt><span class="sect1"><a href="drd-manual.html#drd-manual.Pthreads">8.3. Using the POSIX Threads API Effectively</a></span></dt>
 <dd><dl>
@@ -266,9 +270,9 @@ function</a></span></dt>
 <dt><span class="sect1"><a href="dh-manual.html#dh-manual.overview">10.1. Overview</a></span></dt>
 <dt><span class="sect1"><a href="dh-manual.html#dh-manual.understanding">10.2. Understanding DHAT's output</a></span></dt>
 <dd><dl>
-<dt><span class="sect2"><a href="dh-manual.html#id625080">10.2.1. Interpreting the max-live, tot-alloc and deaths fields</a></span></dt>
-<dt><span class="sect2"><a href="dh-manual.html#id629340">10.2.2. Interpreting the acc-ratios fields</a></span></dt>
-<dt><span class="sect2"><a href="dh-manual.html#id598919">10.2.3. Interpreting "Aggregated access counts by offset" data</a></span></dt>
+<dt><span class="sect2"><a href="dh-manual.html#idp12661584">10.2.1. Interpreting the max-live, tot-alloc and deaths fields</a></span></dt>
+<dt><span class="sect2"><a href="dh-manual.html#idp16242000">10.2.2. Interpreting the acc-ratios fields</a></span></dt>
+<dt><span class="sect2"><a href="dh-manual.html#idp10507104">10.2.3. Interpreting "Aggregated access counts by offset" data</a></span></dt>
 </dl></dd>
 <dt><span class="sect1"><a href="dh-manual.html#dh-manual.options">10.3. DHAT Command-line Options</a></span></dt>
 </dl></dd>

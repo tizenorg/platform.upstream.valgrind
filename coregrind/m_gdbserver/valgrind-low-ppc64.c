@@ -27,7 +27,7 @@
 #include "regcache.h"
 
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
@@ -320,13 +320,22 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
 }
 
 static
-char* target_xml (Bool shadow_mode)
+const char* target_xml (Bool shadow_mode)
 {
    if (shadow_mode) {
       return "powerpc-altivec64l-valgrind.xml";
    } else {
       return "powerpc-altivec64l.xml";
    }  
+}
+
+static CORE_ADDR** target_get_dtv (ThreadState *tst)
+{
+   VexGuestPPC64State* ppc64 = (VexGuestPPC64State*)&tst->arch.vex;
+   // ppc64 dtv is located just before the tcb, which is 0x7000 before 
+   // the thread id (r13)
+   return (CORE_ADDR**)((CORE_ADDR)ppc64->guest_GPR13 
+                        - 0x7000 - sizeof(CORE_ADDR));
 }
 
 static struct valgrind_target_ops low_target = {
@@ -337,7 +346,8 @@ static struct valgrind_target_ops low_target = {
    get_pc,
    set_pc,
    "ppc64",
-   target_xml
+   target_xml,
+   target_get_dtv
 };
 
 void ppc64_init_architecture (struct valgrind_target_ops *target)

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 Mozilla Inc
+   Copyright (C) 2010-2013 Mozilla Inc
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -149,7 +149,7 @@ __asm__(
 
 /* ------------ ppc64-linux ------------ */
 
-#if defined(VGP_ppc64_linux)
+#if defined(VGP_ppc64be_linux)
 
 __asm__(
 ".section \".toc\",\"aw\""          "\n"
@@ -158,7 +158,6 @@ __asm__(
 ".align 2"                          "\n"
 ".p2align 4,,15"                    "\n"
 ".globl VG_MINIMAL_SETJMP"          "\n"
-
 ".section \".opd\",\"aw\""          "\n"
 ".align 3"                          "\n"
 "VG_MINIMAL_SETJMP:"                "\n"
@@ -267,10 +266,115 @@ __asm__(
 ""       "\n"
 
 ".previous"  "\n"
-".previous"  "\n"
 );
 
-#endif /* VGP_ppc64_linux */
+#elif defined(VGP_ppc64le_linux)
+__asm__(
+".section \".toc\",\"aw\""          "\n"
+
+".section \".text\""                "\n"
+".align 2"                          "\n"
+".p2align 4,,15"                    "\n"
+".globl VG_MINIMAL_SETJMP"          "\n"
+".type VG_MINIMAL_SETJMP,@function" "\n"
+"VG_MINIMAL_SETJMP:"                "\n"
+"       .localentry VG_MINIMAL_SETJMP, .-VG_MINIMAL_SETJMP" "\n"
+"        std     0, 0(3)"  "\n"
+"        std     1, 8(3)"  "\n"
+"        std     2, 16(3)"  "\n"
+"        std     3, 24(3)"  "\n"
+"        std     4, 32(3)"  "\n"
+"        std     5, 40(3)"  "\n"
+"        std     6, 48(3)"  "\n"
+"        std     7, 56(3)"  "\n"
+"        std     8, 64(3)"  "\n"
+"        std     9, 72(3)"  "\n"
+"        std     10, 80(3)"  "\n"
+"        std     11, 88(3)"  "\n"
+"        std     12, 96(3)"  "\n"
+"        std     13, 104(3)"  "\n"
+"        std     14, 112(3)"  "\n"
+"        std     15, 120(3)"  "\n"
+"        std     16, 128(3)"  "\n"
+"        std     17, 136(3)"  "\n"
+"        std     18, 144(3)"  "\n"
+"        std     19, 152(3)"  "\n"
+"        std     20, 160(3)"  "\n"
+"        std     21, 168(3)"  "\n"
+"        std     22, 176(3)"  "\n"
+"        std     23, 184(3)"  "\n"
+"        std     24, 192(3)"  "\n"
+"        std     25, 200(3)"  "\n"
+"        std     26, 208(3)"  "\n"
+"        std     27, 216(3)"  "\n"
+"        std     28, 224(3)"  "\n"
+"        std     29, 232(3)"  "\n"
+"        std     30, 240(3)"  "\n"
+"        std     31, 248(3)"  "\n"
+// must use a caller-save register here as scratch, hence r4
+"        mflr    4"  "\n"
+"        std     4, 256(3)"  "\n"
+"        mfcr    4"  "\n"
+"        std     4, 264(3)"  "\n"
+"        li      3, 0"  "\n"
+"        blr"  "\n"
+""       "\n"
+
+
+".globl VG_MINIMAL_LONGJMP"                "\n"
+".type   VG_MINIMAL_LONGJMP, @function"    "\n"
+"VG_MINIMAL_LONGJMP:"                      "\n"
+"        .localentry VG_MINIMAL_LONGJMP, .-VG_MINIMAL_LONGJMP" "\n"
+         // do r4 = 1
+         // and park it in the restore slot for r3 (the ret reg)
+"        li      4, 1"  "\n"
+"        std     4, 24(3)"  "\n"
+         // restore everything except r3
+         // then r3 last of all
+         // then blr
+"        ld      0, 256(3)"  "\n"
+"        mtlr    0"  "\n"
+"        ld      0, 264(3)"  "\n"
+"        mtcr    0"  "\n"
+"        ld      0, 0(3)"  "\n"
+"        ld      1, 8(3)"  "\n"
+"        ld      2, 16(3)"  "\n"
+         // r3 is done at the end
+"        ld      4, 32(3)"  "\n"
+"        ld      5, 40(3)"  "\n"
+"        ld      6, 48(3)"  "\n"
+"        ld      7, 56(3)"  "\n"
+"        ld      8, 64(3)"  "\n"
+"        ld      9, 72(3)"  "\n"
+"        ld      10, 80(3)"  "\n"
+"        ld      11, 88(3)"  "\n"
+"        ld      12, 96(3)"  "\n"
+"        ld      13, 104(3)"  "\n"
+"        ld      14, 112(3)"  "\n"
+"        ld      15, 120(3)"  "\n"
+"        ld      16, 128(3)"  "\n"
+"        ld      17, 136(3)"  "\n"
+"        ld      18, 144(3)"  "\n"
+"        ld      19, 152(3)"  "\n"
+"        ld      20, 160(3)"  "\n"
+"        ld      21, 168(3)"  "\n"
+"        ld      22, 176(3)"  "\n"
+"        ld      23, 184(3)"  "\n"
+"        ld      24, 192(3)"  "\n"
+"        ld      25, 200(3)"  "\n"
+"        ld      26, 208(3)"  "\n"
+"        ld      27, 216(3)"  "\n"
+"        ld      28, 224(3)"  "\n"
+"        ld      29, 232(3)"  "\n"
+"        ld      30, 240(3)"  "\n"
+"        ld      31, 248(3)"  "\n"
+"        ld      3, 24(3)"  "\n"
+"        blr"               "\n"
+""       "\n"
+
+".previous"  "\n"
+);
+#endif /* VGP_ppc64be_linux */
 
 
 /* ------------ amd64-{linux,darwin} ------------ */
@@ -443,6 +547,59 @@ __asm__(
 );
 
 #endif /* VGP_x86_linux || VGP_x86_darwin */
+
+#if defined(VGP_mips32_linux)
+
+__asm__(
+".text                          \n\t"
+".globl VG_MINIMAL_SETJMP;      \n\t"
+".align 2;                      \n\t"
+"VG_MINIMAL_SETJMP:             \n\t"  /* a0 = jmp_buf */
+"   sw   $s0,  0($a0)           \n\t"  /* Save registers s0-s7. */
+"   sw   $s1,  4($a0)           \n\t"
+"   sw   $s2,  8($a0)           \n\t"
+"   sw   $s3, 12($a0)           \n\t"
+"   sw   $s4, 16($a0)           \n\t"
+"   sw   $s5, 20($a0)           \n\t"
+"   sw   $s6, 24($a0)           \n\t"
+"   sw   $s7, 28($a0)           \n\t"
+"   sw   $s8, 32($a0)           \n\t"  /* Frame pointer. */
+"   sw   $ra, 36($a0)           \n\t"  /* Return address. */
+"   sw   $gp, 40($a0)           \n\t"  /* Global data pointer. */
+"   sw   $sp, 44($a0)           \n\t"  /* Stack pointer. */
+
+"   move $v0, $zero             \n\t"  /* Return zero. */
+"   j    $ra                    \n\t"
+"   nop                         \n\t"
+".previous                      \n\t"
+"                               \n\t"
+".globl VG_MINIMAL_LONGJMP;     \n\t"
+".align 2;                      \n\t"
+"VG_MINIMAL_LONGJMP:            \n\t"  /* a0 = jmp_buf */
+"   lw   $s0,  0($a0)           \n\t"  /* Restore registers s0-s7. */
+"   lw   $s1,  4($a0)           \n\t"
+"   lw   $s2,  8($a0)           \n\t"
+"   lw   $s3, 12($a0)           \n\t"
+"   lw   $s4, 16($a0)           \n\t"
+"   lw   $s5, 20($a0)           \n\t"
+"   lw   $s6, 24($a0)           \n\t"
+"   lw   $s7, 28($a0)           \n\t"
+"   lw   $s8, 32($a0)           \n\t"  /* Frame pointer. */
+"   lw   $ra, 36($a0)           \n\t"  /* Return address. */
+"   lw   $gp, 40($a0)           \n\t"  /* Global data pointer. */
+"   lw   $sp, 44($a0)           \n\t"  /* Stack pointer. */
+
+/* Checking whether second argument is zero. */
+"   bnez $a1, 1f                \n\t"
+"   nop                         \n\t"
+"   addi $a1, $a1, 1            \n\t"  /* We must return 1 if val=0. */
+"1:                             \n\t"
+"   move $v0, $a1               \n\t"  /* Return value of second argument. */
+"   j    $ra                    \n\t"
+"   nop                         \n\t"
+".previous                      \n\t"
+);
+#endif  /* VGP_mips32_linux */
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

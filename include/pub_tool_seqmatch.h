@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 
 #ifndef __PUB_TOOL_SEQMATCH_H
 #define __PUB_TOOL_SEQMATCH_H
+
+#include "pub_tool_basics.h"   // UWord
 
 /* Perform totally abstractified sequence matching, of an input
    sequence against a pattern sequence.  The pattern sequence may
@@ -56,7 +58,11 @@
    elements each of size 'szbPatt'.  For the initial call, pass a
    value of zero to 'ixPatt'.
 
-   Ditto for input/nInput/szbInput/ixInput.
+   The input sequence can be similarly described using
+   input/nInput/szbInput/ixInput.
+   Alternatively, the input can be lazily constructed using an
+   inputCompleter. When using an inputCompleter, input/nInput/szbInput
+   are unused.
 
    pIsStar should return True iff the pointed-to pattern element is
    conceptually a '*'.
@@ -70,26 +76,29 @@
    (conceptually) '*' nor '?', so it must be a literal (in the sense
    that all the input sequence elements are literal).
 
-   input might be lazily constructed when pattEQinp is called.
+   If inputCompleter is not NULL, the input will be lazily constructed
+   when pattEQinp is called.
    For lazily constructing the input element, the two last arguments
    of pattEQinp are the inputCompleter and the index of the input
    element to complete.
-   inputCompleter can be NULL.
+   VG_(generic_match) calls (*haveInputInpC)(inputCompleter,ixInput) to
+   check if there is an element ixInput in the input sequence.
 */
 Bool VG_(generic_match) ( 
         Bool matchAll,
-        void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
-        void* input, SizeT szbInput, UWord nInput, UWord ixInput,
-        Bool (*pIsStar)(void*),
-        Bool (*pIsQuery)(void*),
-        Bool (*pattEQinp)(void*,void*,void*,UWord),
-        void* inputCompleter
+        const void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
+        const void* input, SizeT szbInput, UWord nInput, UWord ixInput,
+        Bool (*pIsStar)(const void*),
+        Bool (*pIsQuery)(const void*),
+        Bool (*pattEQinp)(const void*,const void*,void*,UWord),
+        void* inputCompleter,
+        Bool (*haveInputInpC)(void*,UWord)
      );
 
 /* Mini-regexp function.  Searches for 'pat' in 'str'.  Supports
    meta-symbols '*' and '?'.  There is no way to escape meta-symbols
    in the pattern. */
-Bool VG_(string_match) ( const Char* pat, const Char* str );
+Bool VG_(string_match) ( const HChar* pat, const HChar* str );
 
 #endif   // __PUB_TOOL_SEQMATCH_H
 

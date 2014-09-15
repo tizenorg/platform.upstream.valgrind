@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
 #ifndef __PUB_CORE_TRAMPOLINE_H
 #define __PUB_CORE_TRAMPOLINE_H
+
+#include "pub_core_basics.h"   // VG_ macro
 
 //--------------------------------------------------------------------
 // PURPOSE: This module defines a few replacement functions for Linux
@@ -79,7 +81,7 @@ extern UInt  VG_(ppc32_linux_REDIR_FOR_strcmp)( void*, void* );
 extern void* VG_(ppc32_linux_REDIR_FOR_strchr)( void*, Int );
 #endif
 
-#if defined(VGP_ppc64_linux)
+#if defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 extern Addr  VG_(ppc64_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(ppc64_linux_REDIR_FOR_strlen)( void* );
 extern void* VG_(ppc64_linux_REDIR_FOR_strchr)( void*, Int );
@@ -99,6 +101,14 @@ extern Addr  VG_(arm_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(arm_linux_REDIR_FOR_strlen)( void* );
 //extern void* VG_(arm_linux_REDIR_FOR_index) ( void*, Int );
 extern void* VG_(arm_linux_REDIR_FOR_memcpy)( void*, void*, Int );
+extern void* VG_(arm_linux_REDIR_FOR_strcmp)( void*, void* );
+#endif
+
+#if defined(VGP_arm64_linux)
+extern Addr  VG_(arm64_linux_SUBST_FOR_rt_sigreturn);
+extern ULong VG_(arm64_linux_REDIR_FOR_strlen)( void* );
+extern void* VG_(arm64_linux_REDIR_FOR_index) ( void*, Long );
+extern Long  VG_(arm64_linux_REDIR_FOR_strcmp)( void*, void* );
 #endif
 
 #if defined(VGP_x86_darwin)
@@ -120,17 +130,30 @@ extern char* VG_(amd64_darwin_REDIR_FOR_strcpy)( char *s1, char *s2 );
 extern SizeT VG_(amd64_darwin_REDIR_FOR_strlcat)( char *s1, const char *s2,
                                                   SizeT size );
 extern UInt VG_(amd64_darwin_REDIR_FOR_arc4random)( void );
+# if DARWIN_VERS == DARWIN_10_9
+  extern char* VG_(amd64_darwin_REDIR_FOR_strchr)( const char*, int );
+# endif
 #endif
 
 #if defined(VGP_s390x_linux)
 extern Addr VG_(s390x_linux_SUBST_FOR_sigreturn);
 extern Addr VG_(s390x_linux_SUBST_FOR_rt_sigreturn);
+// Note: Long for the 2nd parameter because according to z-series ABI,
+// section "Parameter Passing" SIMPLE_ARG:
+// "Values shorter than 64 bits are sign- or zero-extended
+// (as appropriate) to 64 bits."
+extern void* VG_(s390x_linux_REDIR_FOR_index) ( void*, Long );
 #endif
 
 #if defined(VGP_mips32_linux)
 extern Addr  VG_(mips32_linux_SUBST_FOR_sigreturn);
 extern Addr  VG_(mips32_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(mips32_linux_REDIR_FOR_strlen)( void* );
+#endif
+
+#if defined(VGP_mips64_linux)
+extern Addr  VG_(mips64_linux_SUBST_FOR_rt_sigreturn);
+extern UInt  VG_(mips64_linux_REDIR_FOR_strlen)( void* );
 #endif
 
 #endif   // __PUB_CORE_TRAMPOLINE_H

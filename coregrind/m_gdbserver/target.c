@@ -29,11 +29,11 @@
 #include "valgrind_low.h"
 #include "gdb/signals.h"
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
-#include "pub_tool_debuginfo.h"
+#include "pub_core_debuginfo.h"
 
 
 /* the_low_target defines the architecture specific aspects depending
@@ -102,16 +102,17 @@ void valgrind_update_threads (int pid)
 static
 struct reg* build_shadow_arch (struct reg *reg_defs, int n) {
    int i, r;
-   static char *postfix[3] = { "", "s1", "s2" };
+   static const char *postfix[3] = { "", "s1", "s2" };
    struct reg *new_regs = malloc(3 * n * sizeof(reg_defs[0]));
    int reg_set_len = reg_defs[n-1].offset + reg_defs[n-1].size;
 
    for (i = 0; i < 3; i++) {
       for (r = 0; r < n; r++) {
-         new_regs[i*n + r].name = malloc(strlen(reg_defs[r].name) 
-                                         + strlen (postfix[i]) + 1);
-         strcpy (new_regs[i*n + r].name, reg_defs[r].name);
-         strcat (new_regs[i*n + r].name, postfix[i]);
+         char *regname = malloc(strlen(reg_defs[r].name) 
+                                + strlen (postfix[i]) + 1);
+         strcpy (regname, reg_defs[r].name);
+         strcat (regname, postfix[i]);
+         new_regs[i*n + r].name = regname;
          new_regs[i*n + r].offset = i*reg_set_len + reg_defs[r].offset;
          new_regs[i*n + r].size = reg_defs[r].size;
          dlog(1,
@@ -165,11 +166,20 @@ Bool gdbserver_deliver_signal (Int vki_sigNo)
    return vki_sigNo == vki_signal_to_deliver;
 }
 
+static unsigned char exit_status_to_report;
+static int exit_code_to_report;
+void gdbserver_process_exit_encountered (unsigned char status, Int code)
+{
+   vg_assert (status == 'W' || status == 'X');
+   exit_status_to_report = status;
+   exit_code_to_report = code;
+}
+
 static
 char* sym (Addr addr)
 {
    static char buf[200];
-   VG_(describe_IP) (addr, buf, 200);
+   VG_(describe_IP) (addr, buf, 200, NULL);
    return buf;
 }
 
@@ -248,12 +258,33 @@ unsigned char valgrind_wait (char *ourstatus)
    unsigned long wptid;
    ThreadState *tst;
    enum target_signal sig;
+   int code;
 
    pid = VG_(getpid) ();
    dlog(1, "enter valgrind_wait pid %d\n", pid);
 
    regcache_invalidate();
    valgrind_update_threads(pid);
+
+   /* First see if we are done with this process. */
+   if (exit_status_to_report != 0) {
+      *ourstatus = exit_status_to_report;
+      exit_status_to_report = 0;
+
+      if (*ourstatus == 'W') {
+         code = exit_code_to_report;
+         exit_code_to_report = 0;
+         dlog(1, "exit valgrind_wait status W exit code %d\n", code);
+         return code;
+      }
+
+      if (*ourstatus == 'X') {
+         sig = target_signal_from_host(exit_code_to_report);
+         exit_code_to_report = 0;
+         dlog(1, "exit valgrind_wait status X signal %d\n", sig);
+         return sig;
+      }
+   }
 
    /* in valgrind, we consider that a wait always succeeds with STOPPED 'T' 
       and with a signal TRAP (i.e. a breakpoint), unless there is
@@ -279,7 +310,7 @@ unsigned char valgrind_wait (char *ourstatus)
    stop_pc = (*the_low_target.get_pc) ();
    
    dlog(1,
-        "exit valgrind_wait returns ptid %s stop_pc %s signal %d\n", 
+        "exit valgrind_wait status T ptid %s stop_pc %s signal %d\n", 
         image_ptid (wptid), sym (stop_pc), sig);
    return sig;
 }
@@ -415,46 +446,58 @@ void valgrind_store_registers (int regno)
    usr_store_inferior_registers (regno);
 }
 
+Bool hostvisibility = False;
+
 int valgrind_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
 {
    const void *sourceaddr = C2v (memaddr);
    dlog(2, "reading memory %p size %d\n", sourceaddr, len);
-   if (!VG_(am_is_valid_for_client_or_free_or_resvn) ((Addr) sourceaddr, 
-                                                      len, VKI_PROT_READ)) {
+   if (VG_(am_is_valid_for_client) ((Addr) sourceaddr, 
+                                    len, VKI_PROT_READ)
+       || (hostvisibility 
+           && VG_(am_is_valid_for_valgrind) ((Addr) sourceaddr, 
+                                             len, VKI_PROT_READ))) {
+      VG_(memcpy) (myaddr, sourceaddr, len);
+      return 0;
+   } else {
       dlog(1, "error reading memory %p size %d\n", sourceaddr, len);
       return -1;
    }
-   VG_(memcpy) (myaddr, sourceaddr, len);
-   return 0;
 }
 
 int valgrind_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
 {
+   Bool is_valid_client_memory;
    void *targetaddr = C2v (memaddr);
    dlog(2, "writing memory %p size %d\n", targetaddr, len);
-   if (!VG_(am_is_valid_for_client_or_free_or_resvn) ((Addr)targetaddr, 
-                                                      len, VKI_PROT_WRITE)) {
+   is_valid_client_memory 
+      = VG_(am_is_valid_for_client) ((Addr)targetaddr, len, VKI_PROT_WRITE);
+   if (is_valid_client_memory
+       || (hostvisibility 
+           && VG_(am_is_valid_for_valgrind) ((Addr) targetaddr, 
+                                             len, VKI_PROT_READ))) {
+      if (len > 0) {
+         VG_(memcpy) (targetaddr, myaddr, len);
+         if (is_valid_client_memory && VG_(tdict).track_post_mem_write) {
+            /* Inform the tool of the post memwrite.  Note that we do the
+               minimum necessary to avoid complains from e.g.
+               memcheck. The idea is that the debugger is as least
+               intrusive as possible.  So, we do not inform of the pre
+               mem write (and in any case, this would cause problems with
+               memcheck that does not like our CorePart in
+               pre_mem_write. */
+            ThreadState *tst = 
+               (ThreadState *) inferior_target_data (current_inferior);
+            ThreadId tid = tst->tid;
+            VG_(tdict).track_post_mem_write( Vg_CoreClientReq, tid,
+                                             (Addr) targetaddr, len );
+         }
+      }
+      return 0;
+   } else {
       dlog(1, "error writing memory %p size %d\n", targetaddr, len);
       return -1;
    }
-   if (len > 0) {
-      VG_(memcpy) (targetaddr, myaddr, len);
-      if (VG_(tdict).track_post_mem_write) {
-         /* Inform the tool of the post memwrite.  Note that we do the
-            minimum necessary to avoid complains from e.g.
-            memcheck. The idea is that the debugger is as least
-            intrusive as possible.  So, we do not inform of the pre
-            mem write (and in any case, this would cause problems with
-            memcheck that does not like our CorePart in
-            pre_mem_write. */
-         ThreadState *tst = 
-            (ThreadState *) inferior_target_data (current_inferior);
-         ThreadId tid = tst->tid;
-         VG_(tdict).track_post_mem_write( Vg_CoreClientReq, tid,
-                                          (Addr) targetaddr, len );
-      }
-   }
-   return 0;
 }
 
 /* insert or remove a breakpoint */
@@ -489,7 +532,7 @@ int valgrind_point (Bool insert, char type, CORE_ADDR addr, int len)
       return 1; /* error or unsupported */
 }
 
-char* valgrind_target_xml (Bool shadow_mode)
+const char* valgrind_target_xml (Bool shadow_mode)
 {
    return (*the_low_target.target_xml) (shadow_mode);
 }
@@ -502,6 +545,144 @@ int valgrind_insert_watchpoint (char type, CORE_ADDR addr, int len)
 int valgrind_remove_watchpoint (char type, CORE_ADDR addr, int len)
 {
    return valgrind_point (/* insert*/ False, type, addr, len);
+}
+
+/* Returns the (platform specific) offset of lm_modid field in the link map
+   struct.
+   Stores the offset in *result and returns True if offset can be determined.
+   Returns False otherwise. *result is not to be used then. */
+static Bool getplatformoffset (SizeT *result)
+{
+   static Bool getplatformoffset_called = False;
+
+   static Bool lm_modid_offset_found = False;
+   static SizeT lm_modid_offset = 1<<31; // Rubbish initial value.
+   // lm_modid_offset is a magic offset, retrieved using an external program.
+
+   if (!getplatformoffset_called) {
+      const HChar *platform = VG_PLATFORM;
+      const HChar *cmdformat = "%s/%s-%s -o %s";
+      const HChar *getoff = "getoff";
+      HChar outfile[VG_(mkstemp_fullname_bufsz) (VG_(strlen)(getoff))];
+      Int fd = VG_(mkstemp) (getoff, outfile);
+      HChar cmd[ VG_(strlen)(cmdformat)
+                 + VG_(strlen)(VG_(libdir)) - 2
+                 + VG_(strlen)(getoff)      - 2
+                 + VG_(strlen)(platform)    - 2
+                 + VG_(strlen)(outfile)     - 2
+                 + 1];
+      UInt cmdlen;
+      struct vg_stat stat_buf;
+      Int ret;
+
+      cmdlen = VG_(snprintf)(cmd, sizeof(cmd),
+                             cmdformat, 
+                             VG_(libdir), getoff, platform, outfile);
+      vg_assert (cmdlen == sizeof(cmd) - 1);
+      ret = VG_(system) (cmd);
+      if (ret != 0 || VG_(debugLog_getLevel)() >= 1)
+         VG_(dmsg) ("command %s exit code %d\n", cmd, ret);
+      ret = VG_(fstat)( fd, &stat_buf );
+      if (ret != 0)
+         VG_(dmsg) ("error VG_(fstat) %d %s\n", fd, outfile);
+      else {
+         HChar *w;
+         HChar *ssaveptr;
+         HChar *os;
+         HChar *str;
+         HChar *endptr;
+
+         os = malloc (stat_buf.size+1);
+         vg_assert (os);
+         ret = VG_(read)(fd, os, stat_buf.size);
+         vg_assert(ret == stat_buf.size);
+         os[ret] = '\0';
+         str = os;
+         while ((w = VG_(strtok_r)(str, " \n", &ssaveptr)) != NULL) {
+            if (VG_(strcmp) (w, "lm_modid_offset") == 0) {
+               w = VG_(strtok_r)(NULL, " \n", &ssaveptr);
+               lm_modid_offset = (SizeT) VG_(strtoull16) ( w, &endptr );
+               if (endptr == w)
+                  VG_(dmsg) ("%s lm_modid_offset unexpected hex value %s\n",
+                             cmd, w);
+               else
+                  lm_modid_offset_found = True;
+            } else {
+               VG_(dmsg) ("%s produced unexpected %s\n", cmd, w);
+            }
+            str = NULL; // ensure next  VG_(strtok_r) continues the parsing.
+         }
+         VG_(free) (os);
+      }
+
+      VG_(close)(fd);
+      ret = VG_(unlink)( outfile );
+      if (ret != 0)
+         VG_(umsg) ("error: could not unlink %s\n", outfile);
+      getplatformoffset_called = True;
+   }
+
+   *result = lm_modid_offset;
+   return lm_modid_offset_found;
+}
+
+Bool valgrind_get_tls_addr (ThreadState *tst,
+                            CORE_ADDR offset,
+                            CORE_ADDR lm,
+                            CORE_ADDR *tls_addr)
+{
+   CORE_ADDR **dtv_loc;
+   CORE_ADDR *dtv;
+   SizeT lm_modid_offset;
+   unsigned long int modid;
+
+#define CHECK_DEREF(addr, len, name) \
+   if (!VG_(am_is_valid_for_client) ((Addr)(addr), (len), VKI_PROT_READ)) { \
+      dlog(0, "get_tls_addr: %s at %p len %lu not addressable\n",       \
+           name, (void*)(addr), (unsigned long)(len));                  \
+      return False;                                                     \
+   }
+
+   *tls_addr = 0;
+
+   if (the_low_target.target_get_dtv == NULL) {
+      dlog(1, "low level dtv support not available\n");
+      return False;
+   }
+
+   if (!getplatformoffset (&lm_modid_offset)) {
+      dlog(0, "link_map modid field offset not available\n");
+      return False;
+   }
+   dlog (2, "link_map modid offset %p\n", (void*)lm_modid_offset);
+   vg_assert (lm_modid_offset < 0x10000); // let's say
+   
+   dtv_loc = (*the_low_target.target_get_dtv)(tst);
+   if (dtv_loc == NULL) {
+      dlog(0, "low level dtv support returned NULL\n");
+      return False;
+   }
+
+   CHECK_DEREF(dtv_loc, sizeof(CORE_ADDR), "dtv_loc");
+   dtv = *dtv_loc;
+
+   // Check we can read at least 2 address at the beginning of dtv.
+   CHECK_DEREF(dtv, 2*sizeof(CORE_ADDR), "dtv 2 first entries");
+   dlog (2, "tid %d dtv %p\n", tst->tid, (void*)dtv);
+
+   // Check we can read the modid
+   CHECK_DEREF(lm+lm_modid_offset, sizeof(unsigned long int), "link_map modid");
+   modid = *(unsigned long int *)(lm+lm_modid_offset);
+
+   // Check we can access the dtv entry for modid
+   CHECK_DEREF(dtv + 2 * modid, sizeof(CORE_ADDR), "dtv[2*modid]");
+
+   // And finally compute the address of the tls variable.
+   *tls_addr = *(dtv + 2 * modid) + offset;
+   
+   return True;
+
+#undef CHECK_DEREF
 }
 
 /* returns a pointer to the architecture state corresponding to
@@ -610,15 +791,19 @@ void valgrind_initialize_target(void)
    amd64_init_architecture(&the_low_target);
 #elif defined(VGA_arm)
    arm_init_architecture(&the_low_target);
+#elif defined(VGA_arm64)
+   arm64_init_architecture(&the_low_target);
 #elif defined(VGA_ppc32)
    ppc32_init_architecture(&the_low_target);
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
    ppc64_init_architecture(&the_low_target);
 #elif defined(VGA_s390x)
    s390x_init_architecture(&the_low_target);
 #elif defined(VGA_mips32)
    mips32_init_architecture(&the_low_target);
+#elif defined(VGA_mips64)
+   mips64_init_architecture(&the_low_target);
 #else
-   architecture missing in target.c valgrind_initialize_target
+   #error "architecture missing in target.c valgrind_initialize_target"
 #endif
 }

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -41,12 +41,12 @@
 /* See detailed comment in include/pub_tool_seqmatch.h about this. */
 Bool VG_(generic_match) ( 
         Bool matchAll,
-        void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
-        void* input, SizeT szbInput, UWord nInput, UWord ixInput,
-        Bool (*pIsStar)(void*),
-        Bool (*pIsQuery)(void*),
-        Bool (*pattEQinp)(void*,void*,void*,UWord),
-        void* inputCompleter
+        const void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
+        const void* input, SizeT szbInput, UWord nInput, UWord ixInput,
+        Bool (*pIsStar)(const void*),
+        Bool (*pIsQuery)(const void*),
+        Bool (*pattEQinp)(const void*,const void*,void*,UWord),
+        void* inputCompleter, Bool (*haveInputInpC)(void*,UWord)
      )
 {
    /* This is the spec, written in my favourite formal specification
@@ -65,21 +65,25 @@ Bool VG_(generic_match) (
       ma []       []     = True
    */
    Bool  havePatt, haveInput;
-   void  *currPatt, *currInput;
+   const HChar *currPatt, *currInput;
   tailcall:
-   vg_assert(nPatt >= 0   && nPatt  < 1000000); /* arbitrary */
-   vg_assert(nInput >= 0  && nInput < 1000000); /* arbitrary */
+   vg_assert(nPatt >= 0 && nPatt  < 1000000); /* arbitrary */
+   vg_assert(inputCompleter
+             || (nInput >= 0  && nInput < 1000000)); /* arbitrary */
    vg_assert(ixPatt >= 0  && ixPatt <= nPatt);
-   vg_assert(ixInput >= 0 && ixInput <= nInput);
+   vg_assert(ixInput >= 0 && (inputCompleter || ixInput <= nInput));
 
    havePatt  = ixPatt < nPatt;
-   haveInput = ixInput < nInput;
+   haveInput = inputCompleter ? 
+      (*haveInputInpC)(inputCompleter, ixInput)
+      : ixInput < nInput;
 
    /* No specific need to set NULL when !have{Patt,Input}, but guards
       against inadvertantly dereferencing an out of range pointer to
       the pattern or input arrays. */
-   currPatt  = havePatt  ? ((Char*)patt) + szbPatt * ixPatt    : NULL;
-   currInput = haveInput ? ((Char*)input) + szbInput * ixInput : NULL;
+   currPatt  = havePatt  ? ((const HChar*)patt) + szbPatt * ixPatt    : NULL;
+   currInput = haveInput && !inputCompleter ? 
+      ((const HChar*)input) + szbInput * ixInput : NULL;
 
    // Deal with the complex case first: wildcards.  Do frugal
    // matching.  When encountering a '*', first skip no characters
@@ -104,7 +108,7 @@ Bool VG_(generic_match) (
                                  patt, szbPatt, nPatt,  ixPatt+1,
                                  input,szbInput,nInput, ixInput+0,
                                  pIsStar,pIsQuery,pattEQinp,
-                                 inputCompleter) ) {
+                                 inputCompleter,haveInputInpC) ) {
             return True;
          }
          // but we can tail-recurse for the second call
@@ -163,23 +167,23 @@ Bool VG_(generic_match) (
 /* And a parameterization of the above, to make it do
    string matching.
 */
-static Bool charIsStar  ( void* pV ) { return *(Char*)pV == '*'; }
-static Bool charIsQuery ( void* pV ) { return *(Char*)pV == '?'; }
-static Bool char_p_EQ_i ( void* pV, void* cV,
+static Bool charIsStar  ( const void* pV ) { return *(const HChar*)pV == '*'; }
+static Bool charIsQuery ( const void* pV ) { return *(const HChar*)pV == '?'; }
+static Bool char_p_EQ_i ( const void* pV, const void* cV,
                           void* null_completer, UWord ixcV ) {
-   Char p = *(Char*)pV;
-   Char c = *(Char*)cV;
+   HChar p = *(const HChar*)pV;
+   HChar c = *(const HChar*)cV;
    vg_assert(p != '*' && p != '?');
    return p == c;
 }
-Bool VG_(string_match) ( const Char* patt, const Char* input )
+Bool VG_(string_match) ( const HChar* patt, const HChar* input )
 {
    return VG_(generic_match)(
              True/* match-all */,
-             (void*)patt,  sizeof(UChar), VG_(strlen)(patt), 0,
-             (void*)input, sizeof(UChar), VG_(strlen)(input), 0,
+             patt,  sizeof(HChar), VG_(strlen)(patt), 0,
+             input, sizeof(HChar), VG_(strlen)(input), 0,
              charIsStar, charIsQuery, char_p_EQ_i,
-             NULL
+             NULL, NULL
           );
 }
 

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2007 OpenWorks LLP
+   Copyright (C) 2006-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -30,8 +30,10 @@
 */
 
 #ifndef __PRIV_INITIMG_PATHSCAN_H
-#define __PRIV_INITIMG_PATHSCAN_
+#define __PRIV_INITIMG_PATHSCAN_H
 
-extern HChar* ML_(find_executable) ( const HChar* exec );
+#include "pub_core_basics.h"   // HChar
 
-#endif
+extern const HChar* ML_(find_executable) ( const HChar* exec );
+
+#endif // ndef __PRIV_INITIMG_PATHSCAN_H

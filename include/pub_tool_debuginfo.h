@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 #ifndef __PUB_TOOL_DEBUGINFO_H
 #define __PUB_TOOL_DEBUGINFO_H
 
+#include "pub_tool_basics.h"   // VG_ macro
+
 /*====================================================================*/
 /*=== Obtaining debug information                                  ===*/
 /*====================================================================*/
@@ -41,11 +43,11 @@
    returns False and nothing is copied.  VG_(get_fnname) always
    demangles C++ function names.  VG_(get_fnname_w_offset) is the
    same, except it appends "+N" to symbol names to indicate offsets.  */
-extern Bool VG_(get_filename) ( Addr a, Char* filename, Int n_filename );
-extern Bool VG_(get_fnname)   ( Addr a, Char* fnname,   Int n_fnname   );
+extern Bool VG_(get_filename) ( Addr a, HChar* filename, Int n_filename );
+extern Bool VG_(get_fnname)   ( Addr a, HChar* fnname,   Int n_fnname   );
 extern Bool VG_(get_linenum)  ( Addr a, UInt* linenum );
 extern Bool VG_(get_fnname_w_offset)
-                              ( Addr a, Char* fnname,   Int n_fnname   );
+                              ( Addr a, HChar* fnname,   Int n_fnname   );
 
 /* This one is the most general.  It gives filename, line number and
    optionally directory name.  filename and linenum may not be NULL.
@@ -60,8 +62,8 @@ extern Bool VG_(get_fnname_w_offset)
    found. */
 extern Bool VG_(get_filename_linenum)
                               ( Addr a, 
-                                /*OUT*/Char* filename, Int n_filename,
-                                /*OUT*/Char* dirname,  Int n_dirname,
+                                /*OUT*/HChar* filename, Int n_filename,
+                                /*OUT*/HChar* dirname,  Int n_dirname,
                                 /*OUT*/Bool* dirname_available,
                                 /*OUT*/UInt* linenum );
 
@@ -72,7 +74,7 @@ extern Bool VG_(get_filename_linenum)
    a particular function.  Nb: if an executable/shared object is stripped
    of its symbols, this function will not be able to recognise function
    entry points within it. */
-extern Bool VG_(get_fnname_if_entry) ( Addr a, Char* fnname, Int n_fnname );
+extern Bool VG_(get_fnname_if_entry) ( Addr a, HChar* fnname, Int n_fnname );
 
 typedef
    enum {
@@ -82,7 +84,7 @@ typedef
    } Vg_FnNameKind;           //   Such names are often filtered.
 
 /* Indicates what kind of fnname it is. */
-extern Vg_FnNameKind VG_(get_fnname_kind) ( Char* name );
+extern Vg_FnNameKind VG_(get_fnname_kind) ( HChar* name );
 
 /* Like VG_(get_fnname_kind), but takes a code address. */
 extern Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip );
@@ -92,11 +94,11 @@ extern Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip );
    which is guaranteed to be zero terminated.  Also data_addr's offset
    from the symbol start is put into *offset. */
 extern Bool VG_(get_datasym_and_offset)( Addr data_addr,
-                                         /*OUT*/Char* dname, Int n_dname,
+                                         /*OUT*/HChar* dname, Int n_dname,
                                          /*OUT*/PtrdiffT* offset );
 
 /* Try to form some description of DATA_ADDR by looking at the DWARF3
-   debug info we have.  This considers all global variables, and all
+   debug info we have.  This considers all global variables, and 8
    frames in the stacks of all threads.  Result is written at the ends
    of DNAME{1,2}V, which are XArray*s of HChar, that have been
    initialised by the caller, and True is returned.  If no description
@@ -116,7 +118,12 @@ Bool VG_(get_data_description)(
 
 /* Succeeds if the address is within a shared object or the main executable.
    It doesn't matter if debug info is present or not. */
-extern Bool VG_(get_objname)  ( Addr a, Char* objname, Int n_objname );
+extern Bool VG_(get_objname)  ( Addr a, HChar* objname, Int n_objname );
+
+
+/* Cursor allowing to describe inlined function calls at an IP,
+   by doing successive calls to VG_(describe_IP). */
+typedef  struct _InlIPCursor InlIPCursor;
 
 /* Puts into 'buf' info about the code address %eip:  the address, function
    name (if known) and filename/line number (if known), like this:
@@ -124,8 +131,33 @@ extern Bool VG_(get_objname)  ( Addr a, Char* objname, Int n_objname );
       0x4001BF05: realloc (vg_replace_malloc.c:339)
 
    'n_buf' gives length of 'buf'.  Returns 'buf'.
+
+   eip can possibly corresponds to inlined function call(s).
+   To describe eip and the inlined function calls, the following must
+   be done:
+       InlIPCursor *iipc = VG_(new_IIPC)(eip);
+       do {
+          VG_(describe_IP)(eip, buf, n_buf, iipc);
+          ... use buf ...
+       } while (VG_(next_IIPC)(iipc));
+       VG_(delete_IIPC)(iipc);
+
+   To only describe eip, without the inlined calls at eip, give a NULL iipc:
+       VG_(describe_IP)(eip, buf, n_buf, NULL);   
 */
-extern Char* VG_(describe_IP)(Addr eip, Char* buf, Int n_buf);
+extern HChar* VG_(describe_IP)(Addr eip, HChar* buf, Int n_buf,
+                               InlIPCursor* iipc);
+
+/* Builds a IIPC (Inlined IP Cursor) to describe eip and all the inlined calls
+   at eip. Such a cursor must be deleted after use using VG_(delete_IIPC). */
+extern InlIPCursor* VG_(new_IIPC)(Addr eip);
+/* Move the cursor to the next call to describe.
+   Returns True if there are still calls to describe.
+   False if nothing to describe anymore. */
+extern Bool VG_(next_IIPC)(InlIPCursor *iipc);
+/* Free all memory associated with iipc. */
+extern void VG_(delete_IIPC)(InlIPCursor *iipc);
+
 
 
 /* Get an XArray of StackBlock which describe the stack (auto) blocks
@@ -184,12 +216,16 @@ DebugInfo* VG_(find_DebugInfo) ( Addr a );
 /* Fish bits out of DebugInfos. */
 Addr          VG_(DebugInfo_get_text_avma)   ( const DebugInfo *di );
 SizeT         VG_(DebugInfo_get_text_size)   ( const DebugInfo *di );
+Addr          VG_(DebugInfo_get_bss_avma)    ( const DebugInfo *di );
+SizeT         VG_(DebugInfo_get_bss_size)    ( const DebugInfo *di );
 Addr          VG_(DebugInfo_get_plt_avma)    ( const DebugInfo *di );
 SizeT         VG_(DebugInfo_get_plt_size)    ( const DebugInfo *di );
 Addr          VG_(DebugInfo_get_gotplt_avma) ( const DebugInfo *di );
 SizeT         VG_(DebugInfo_get_gotplt_size) ( const DebugInfo *di );
-const UChar*  VG_(DebugInfo_get_soname)      ( const DebugInfo *di );
-const UChar*  VG_(DebugInfo_get_filename)    ( const DebugInfo *di );
+Addr          VG_(DebugInfo_get_got_avma)    ( const DebugInfo *di );
+SizeT         VG_(DebugInfo_get_got_size)    ( const DebugInfo *di );
+const HChar*  VG_(DebugInfo_get_soname)      ( const DebugInfo *di );
+const HChar*  VG_(DebugInfo_get_filename)    ( const DebugInfo *di );
 PtrdiffT      VG_(DebugInfo_get_text_bias)   ( const DebugInfo *di );
 
 /* Function for traversing the DebugInfo list.  When called with NULL
@@ -200,24 +236,6 @@ PtrdiffT      VG_(DebugInfo_get_text_bias)   ( const DebugInfo *di );
    particular code address.  So it isn't safe to assume that the order
    of the list stays constant. */
 const DebugInfo* VG_(next_DebugInfo)    ( const DebugInfo *di );
-
-/* Functions for traversing all the symbols in a DebugInfo.  _howmany
-   tells how many symbol table entries there are.  _getidx retrieves
-   the n'th entry, for n in 0 .. _howmany-1.  You may not modify the
-   function names thereby acquired; if you want to do so, first strdup
-   them.  The primary name is returned in *pri_name, and *sec_names is
-   set either to NULL or to a NULL terminated vector containing
-   pointers to the secondary names. */
-Int  VG_(DebugInfo_syms_howmany) ( const DebugInfo *di );
-void VG_(DebugInfo_syms_getidx)  ( const DebugInfo *di, 
-                                   Int idx,
-                                   /*OUT*/Addr*    avma,
-                                   /*OUT*/Addr*    tocptr,
-                                   /*OUT*/UInt*    size,
-                                   /*OUT*/UChar**  pri_name,
-                                   /*OUT*/UChar*** sec_names,
-                                   /*OUT*/Bool*    isText,
-                                   /*OUT*/Bool*    isIFunc );
 
 /* A simple enumeration to describe the 'kind' of various kinds of
    segments that arise from the mapping of object files. */
@@ -242,7 +260,7 @@ const HChar* VG_(pp_SectKind)( VgSectKind kind );
    it comes from.  If name is non-NULL, then the last n_name-1
    characters of the object's name is put in name[0 .. n_name-2], and
    name[n_name-1] is set to zero (guaranteed zero terminated). */
-VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/UChar* name, SizeT n_name, 
+VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar* name, SizeT n_name, 
                                      Addr a);
 
 

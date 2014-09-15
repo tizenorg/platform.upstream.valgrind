@@ -27,7 +27,7 @@
 #include "regcache.h"
 
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
@@ -188,13 +188,22 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
 }
 
 static
-char* target_xml (Bool shadow_mode)
+const char* target_xml (Bool shadow_mode)
 {
    if (shadow_mode) {
       return "s390x-generic-valgrind.xml";
    } else {
       return "s390x-generic.xml";
    }  
+}
+
+static CORE_ADDR** target_get_dtv (ThreadState *tst)
+{
+   VexGuestS390XState* s390x = (VexGuestS390XState*)&tst->arch.vex;
+   // Thread pointer is in a0 (high 32 bits) and a1. Dtv is the second word.
+   return (CORE_ADDR**)((Addr)((Addr64)s390x->guest_a0 << 32
+                              | (Addr64)s390x->guest_a1)
+                        + sizeof(CORE_ADDR));
 }
 
 static struct valgrind_target_ops low_target = {
@@ -205,7 +214,8 @@ static struct valgrind_target_ops low_target = {
    get_pc,
    set_pc,
    "s390x",
-   target_xml
+   target_xml,
+   target_get_dtv
 };
 
 void s390x_init_architecture (struct valgrind_target_ops *target)

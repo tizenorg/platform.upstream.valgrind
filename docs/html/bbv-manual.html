@@ -2,8 +2,8 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
 <title>12. BBV: an experimental basic block vector generation tool</title>
-<link rel="stylesheet" href="vg_basic.css" type="text/css">
-<meta name="generator" content="DocBook XSL Stylesheets V1.75.2">
+<link rel="stylesheet" type="text/css" href="vg_basic.css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.78.1">
 <link rel="home" href="index.html" title="Valgrind Documentation">
 <link rel="up" href="manual.html" title="Valgrind User Manual">
 <link rel="prev" href="sg-manual.html" title="11. SGCheck: an experimental stack and global array overrun detector">
@@ -17,12 +17,12 @@
 <th align="center" valign="middle">Valgrind User Manual</th>
 <td width="22px" align="center" valign="middle"><a accesskey="n" href="lk-manual.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
 </tr></table></div>
-<div class="chapter" title="12. BBV: an experimental basic block vector generation tool">
-<div class="titlepage"><div><div><h2 class="title">
-<a name="bbv-manual"></a>12. BBV: an experimental basic block vector generation tool</h2></div></div></div>
+<div class="chapter">
+<div class="titlepage"><div><div><h1 class="title">
+<a name="bbv-manual"></a>12. BBV: an experimental basic block vector generation tool</h1></div></div></div>
 <div class="toc">
 <p><b>Table of Contents</b></p>
-<dl>
+<dl class="toc">
 <dt><span class="sect1"><a href="bbv-manual.html#bbv-manual.overview">12.1. Overview</a></span></dt>
 <dt><span class="sect1"><a href="bbv-manual.html#bbv-manual.quickstart">12.2. Using Basic Block Vectors to create SimPoints</a></span></dt>
 <dt><span class="sect1"><a href="bbv-manual.html#bbv-manual.usage">12.3. BBV Command-line Options</a></span></dt>
@@ -36,7 +36,7 @@
 <p>To use this tool, you must specify
 <code class="option">--tool=exp-bbv</code> on the Valgrind
 command line.</p>
-<div class="sect1" title="12.1. Overview">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.overview"></a>12.1. Overview</h2></div></div></div>
 <p>
@@ -74,7 +74,7 @@ command line.</p>
    B. Calder.  
 </p>
 </div>
-<div class="sect1" title="12.2. Using Basic Block Vectors to create SimPoints">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.quickstart"></a>12.2. Using Basic Block Vectors to create SimPoints</h2></div></div></div>
 <p>
@@ -131,12 +131,12 @@ command line.</p>
    calculate your results.
 </p>
 </div>
-<div class="sect1" title="12.3. BBV Command-line Options">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.usage"></a>12.3. BBV Command-line Options</h2></div></div></div>
 <p> BBV-specific command-line options are:</p>
 <div class="variablelist">
-<a name="bbv.opts.list"></a><dl>
+<a name="bbv.opts.list"></a><dl class="variablelist">
 <dt>
 <a name="opt.bb-out-file"></a><span class="term">
         <code class="option">--bb-out-file=&lt;name&gt; [default: bb.out.%p] </code>
@@ -198,7 +198,7 @@ command line.</p>
 </dl>
 </div>
 </div>
-<div class="sect1" title="12.4. Basic Block Vector File Format">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.fileformat"></a>12.4. Basic Block Vector File Format</h2></div></div></div>
 <p>  
@@ -239,7 +239,7 @@ T:18:45 :12:135353 :56:78 314:4324263</pre>
   not generate these, as the SimPoint utility ignores them.
 </p>
 </div>
-<div class="sect1" title="12.5. Implementation">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.implementation"></a>12.5. Implementation</h2></div></div></div>
 <p>
@@ -308,7 +308,7 @@ T:18:45 :12:135353 :56:78 314:4324263</pre>
    counters on Pentium 4 systems.
 </p>
 </div>
-<div class="sect1" title="12.6. Threaded Executable Support">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.threadsupport"></a>12.6. Threaded Executable Support</h2></div></div></div>
 <p>
@@ -326,7 +326,7 @@ T:18:45 :12:135353 :56:78 314:4324263</pre>
    BBV.
 </p>
 </div>
-<div class="sect1" title="12.7. Validation">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.validation"></a>12.7. Validation</h2></div></div></div>
 <p>
@@ -338,7 +338,7 @@ T:18:45 :12:135353 :56:78 314:4324263</pre>
    V.M. Weaver and S.A. McKee.
 </p>
 </div>
-<div class="sect1" title="12.8. Performance">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="bbv-manual.performance"></a>12.8. Performance</h2></div></div></div>
 <p>

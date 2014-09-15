@@ -19,11 +19,17 @@ endif
 if VGCONF_ARCHS_INCLUDE_ARM
 SUBDIRS += arm
 endif
+if VGCONF_ARCHS_INCLUDE_ARM64
+SUBDIRS += arm64
+endif
 if VGCONF_ARCHS_INCLUDE_S390X
 SUBDIRS += s390x
 endif
 if VGCONF_ARCHS_INCLUDE_MIPS32
 SUBDIRS += mips32
+endif
+if VGCONF_ARCHS_INCLUDE_MIPS64
+SUBDIRS += mips64
 endif
 
 # OS-specific tests
@@ -39,12 +45,14 @@ if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 SUBDIRS += x86-linux
 endif
 
-DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm s390x mips32 linux darwin x86-linux .
+DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm arm64 s390x mips32 mips64 \
+               linux darwin x86-linux .
 
 dist_noinst_SCRIPTS = \
 	filter_cmdline0 \
 	filter_cmdline1 \
 	filter_fdleak \
+	filter_ioctl_moans \
 	filter_linenos \
 	filter_none_discards \
 	filter_shell_output \
@@ -96,6 +104,7 @@ EXTRA_DIST = \
 	fucomip.stderr.exp fucomip.vgtest \
 	gxx304.stderr.exp gxx304.vgtest \
 	ifunc.stderr.exp ifunc.stdout.exp ifunc.vgtest \
+	ioctl_moans.stderr.exp ioctl_moans.vgtest \
 	manythreads.stdout.exp manythreads.stderr.exp manythreads.vgtest \
 	map_unaligned.stderr.exp map_unaligned.vgtest \
 	map_unmap.stderr.exp map_unmap.stdout.exp map_unmap.vgtest \
@@ -180,9 +189,9 @@ check_PROGRAMS = \
 	fdleak_fcntl fdleak_ipv4 fdleak_open fdleak_pipe \
 	fdleak_socketpair \
 	floored fork fucomip \
+	ioctl_moans \
 	mmap_fcntl_bug \
 	munmap_exe map_unaligned map_unmap mq \
-	nestedfns \
 	pending \
 	procfs-cmdline-exe \
 	pth_atfork1 pth_blockedsig pth_cancel1 pth_cancel2 pth_cvsimple \
@@ -207,6 +216,10 @@ check_PROGRAMS = \
 	coolo_sigaction \
 	gxx304 \
 	process_vm_readv_writev
+
+if HAVE_NESTED_FUNCTIONS
+   check_PROGRAMS += nestedfns
+endif
 
 # DDD:
 # - manythreads and thread-exits have lots of this:
@@ -267,7 +280,7 @@ threaded_fork_LDADD	= -lpthread
 threadederrno_LDADD	= -lpthread
 tls_SOURCES		= tls.c tls2.c
 tls_DEPENDENCIES	= tls.so tls2.so
-tls_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests
+tls_LDFLAGS		= -Wl,-rpath,$(abs_top_builddir)/none/tests
 tls_LDADD		= tls.so tls2.so -lpthread
 tls_so_SOURCES		= tls_so.c
 tls_so_DEPENDENCIES	= tls2.so
@@ -275,7 +288,7 @@ if VGCONF_OS_IS_DARWIN
  tls_so_LDFLAGS		= -dynamic -dynamiclib -all_load -fpic
  tls_so_LDADD		= `pwd`/tls2.so
 else
- tls_so_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests -shared -fPIC
+ tls_so_LDFLAGS		= -Wl,-rpath,$(abs_top_builddir)/none/tests -shared -fPIC
  tls_so_LDADD		= tls2.so
 endif
 tls_so_CFLAGS		= $(AM_CFLAGS) -fPIC

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2012 Apple Inc.
+   Copyright (C) 2007-2013 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -290,6 +290,9 @@ typedef uint32_t vki_u32;
 #define VKI_F_LOG2PHYS	F_LOG2PHYS
 #define VKI_F_GETPATH	F_GETPATH
 #define VKI_F_ADDSIGS	F_ADDSIGS
+#if DARWIN_VERS >= DARWIN_10_9
+# define VKI_F_ADDFILESIGS  F_ADDFILESIGS
+#endif
 #define VKI_F_FULLFSYNC	F_FULLFSYNC
 #define VKI_F_PATHPKG_CHECK	F_PATHPKG_CHECK
 #define VKI_F_FREEZE_FS	F_FREEZE_FS
@@ -786,6 +789,7 @@ typedef
 #include <sys/event.h>
 
 #define vki_kevent kevent
+#define vki_kevent64 kevent64_s
 
 
 #include <sys/ev.h>
@@ -1039,6 +1043,16 @@ struct ByteRangeLockPB2
 #include <sys/aio.h>
 
 #define vki_aiocb aiocb
+
+
+#include <netinet/tcp.h>
+
+#define VKI_TCP_NODELAY  TCP_NODELAY
+
+
+#include <netinet/in.h>
+
+#define VKI_IPPROTO_TCP  IPPROTO_TCP
 
 
 // XXX: for some reason when I #include <sys/kernel_types.h> I get a syntax

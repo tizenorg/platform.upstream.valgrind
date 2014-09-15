@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -57,7 +57,8 @@ void VG_NOTIFY_ON_LOAD(freeres)( void );
 void VG_NOTIFY_ON_LOAD(freeres)( void )
 {
 #  if !defined(__UCLIBC__) \
-   && !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
+   && !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android) \
+   && !defined(VGPV_mips32_linux_android)
    extern void __libc_freeres(void);
    __libc_freeres();
 #  endif
@@ -76,17 +77,29 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
 {
     OrigFn fn;
     Addr result = 0;
+    Addr fnentry;
 
     /* Call the original indirect function and get it's result */
     VALGRIND_GET_ORIG_FN(fn);
     CALL_FN_W_v(result, fn);
+
+#if defined(VGP_ppc64be_linux)
+   /* ppc64be uses function descriptors, so get the actual function entry
+      address for the client request, but return the function descriptor
+      from this function. 
+      result points to the function descriptor, which starts with the
+      function entry. */
+    fnentry = *(Addr*)result;
+#else
+    fnentry = result;
+#endif
 
     /* Ask the valgrind core running on the real CPU (as opposed to this
        code which runs on the emulated CPU) to update the redirection that
        led to this function. This client request eventually gives control to
        the function VG_(redir_add_ifunc_target) in m_redir.c  */
     VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__ADD_IFUNC_TARGET,
-                                    fn.nraddr, result, 0, 0, 0);
+                                    fn.nraddr, fnentry, 0, 0, 0);
     return (void*)result;
 }
 
@@ -100,7 +113,7 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
 
 /* This string will be inserted into crash logs, so crashes while 
    running under Valgrind can be distinguished from other crashes. */
-__private_extern__ char *__crashreporter_info__ = "Instrumented by Valgrind " VERSION;
+__private_extern__ const char *__crashreporter_info__ = "Instrumented by Valgrind " VERSION;
 
 /* ---------------------------------------------------------------------
    Darwin environment cleanup
@@ -116,10 +129,10 @@ __private_extern__ char *__crashreporter_info__ = "Instrumented by Valgrind " VE
 #include <crt_externs.h>
 
 // GrP fixme copied from m_libcproc
-static void env_unsetenv ( Char **env, const Char *varname )
+static void env_unsetenv ( HChar **env, const HChar *varname )
 {
-   Char **from;
-   Char **to = NULL;
+   HChar **from;
+   HChar **to = NULL;
    Int len = strlen(varname);
 
    for (from = to = env; from && *from; from++) {
@@ -137,7 +150,7 @@ static void env_unsetenv ( Char **env, const Char *varname )
 static void vg_cleanup_env(void)  __attribute__((constructor));
 static void vg_cleanup_env(void)
 {
-    Char **envp = (Char**)*_NSGetEnviron();
+    HChar **envp = (HChar**)*_NSGetEnviron();
     env_unsetenv(envp, "VALGRIND_LAUNCHER");
     env_unsetenv(envp, "DYLD_SHARED_REGION");
     // GrP fixme should be more like mash_colon_env()

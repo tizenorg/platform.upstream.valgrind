@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2012 OpenWorks LLP
+   Copyright (C) 2006-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -47,6 +47,8 @@
                                  // VG_IS_PAGE_ALIGNED
                                  // VG_PGROUNDDN, VG_PGROUNDUP
 
+#include "pub_core_libcassert.h" // VG_(exit_now)
+
 #include "pub_core_syscall.h"    // VG_(do_syscallN)
                                  // VG_(mk_SysRes_Error)
                                  // VG_(mk_SysRes_Success)
@@ -65,17 +67,17 @@
 
 __attribute__ ((noreturn))
 extern void   ML_(am_exit) ( Int status );
-extern void   ML_(am_barf) ( HChar* what );
-extern void   ML_(am_barf_toolow) ( HChar* what );
+extern void   ML_(am_barf) ( const HChar* what );
+extern void   ML_(am_barf_toolow) ( const HChar* what );
 
 __attribute__ ((noreturn))
 extern void   ML_(am_assert_fail) ( const HChar* expr,
-                                    const Char* file,
+                                    const HChar* file,
                                     Int line, 
-                                    const Char* fn );
+                                    const HChar* fn );
 
 #define aspacem_assert(expr)                              \
-  ((void) ((expr) ? 0 :                                   \
+  ((void) (LIKELY(expr) ? 0 :                             \
            (ML_(am_assert_fail)(#expr,                    \
                                 __FILE__, __LINE__,       \
                                 __PRETTY_FUNCTION__))))
@@ -105,7 +107,7 @@ extern SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 /* There is also VG_(do_mmap_NO_NOTIFY), but that's not declared
    here (obviously). */
 
-extern SysRes ML_(am_open)  ( const Char* pathname, Int flags, Int mode );
+extern SysRes ML_(am_open)  ( const HChar* pathname, Int flags, Int mode );
 extern void   ML_(am_close) ( Int fd );
 extern Int    ML_(am_read)  ( Int fd, void* buf, Int count);
 extern Int    ML_(am_readlink) ( HChar* path, HChar* buf, UInt bufsiz );

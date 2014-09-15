@@ -11,7 +11,7 @@
       derived from readelf.c and valgrind-20031012-wine/vg_symtab2.c
       derived from wine-1.0/tools/winedump/pdb.c and msc.c
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
    Copyright 2006 Eric Pouech (winedump/pdb.c and msc.c)
       GNU Lesser General Public License version 2.1 or later applies.
@@ -50,6 +50,7 @@
 #include "pub_core_redir.h"
 
 #include "priv_misc.h"             /* dinfo_zalloc/free/strdup */
+#include "priv_image.h"
 #include "priv_d3basics.h"
 #include "priv_storage.h"
 #include "priv_readpdb.h"          // self
@@ -1011,18 +1012,19 @@ static void* pdb_jg_read( struct pdb_reader* pdb,
 }
 
 
-static void* find_pdb_header( UChar* pdbimage,
+static void* find_pdb_header( void* pdbimage,
                               unsigned* signature )
 {
-   static char pdbtxt[]= "Microsoft C/C++";
-   UChar* txteof = (UChar*)VG_(strchr)(pdbimage, '\032');
+   static const HChar pdbtxt[]= "Microsoft C/C++";
+   HChar* txteof = VG_(strchr)(pdbimage, '\032');
    if (! txteof)
       return NULL;
    if (0!=VG_(strncmp)(pdbimage, pdbtxt, -1+ sizeof(pdbtxt)))
       return NULL;
 
    *signature = *(unsigned*)(1+ txteof);
-   return (void*)((~3& (3+ (4+ 1+ (txteof - pdbimage)))) + pdbimage);
+   HChar *img_addr = pdbimage;    // so we can do address arithmetic
+   return ((~3& (3+ (4+ 1+ (txteof - img_addr)))) + img_addr);
 }
 
 
@@ -1094,7 +1096,7 @@ static void pdb_ds_init( struct pdb_reader * reader,
 
 
 static void pdb_jg_init( struct pdb_reader* reader,
-                         char* pdbimage,
+                         void* pdbimage,
                          unsigned n_pdbimage )
 {
    reader->read_file     = pdb_jg_read_file;
@@ -1109,7 +1111,7 @@ static void pdb_jg_init( struct pdb_reader* reader,
 
 
 static 
-void pdb_check_root_version_and_timestamp( char* pdbname,
+void pdb_check_root_version_and_timestamp( HChar* pdbname,
                                            ULong  pdbmtime,
                                            unsigned  version,
                                            UInt TimeDateStamp )
@@ -1209,8 +1211,8 @@ static ULong DEBUG_SnarfCodeView(
 {
    Int    i, length;
    DiSym  vsym;
-   UChar* nmstr;
-   Char   symname[4096 /*WIN32_PATH_MAX*/];
+   HChar* nmstr;
+   HChar  symname[4096 /*WIN32_PATH_MAX*/];
 
    Bool  debug = di->trace_symtab;
    ULong n_syms_read = 0;
@@ -1262,9 +1264,9 @@ static ULong DEBUG_SnarfCodeView(
 
          if (0 /*VG_(needs).data_syms*/) {
             nmstr = ML_(addStr)(di, symname, sym->data_v1.p_name.namelen);
-            vsym.addr      = bias + sectp[sym->data_v1.segment-1].VirtualAddress
+            vsym.avmas.main = bias + sectp[sym->data_v1.segment-1].VirtualAddress
                                  + sym->data_v1.offset;
-            vsym.tocptr    = 0;
+            SET_TOCPTR_AVMA(vsym.avmas, 0);
             vsym.pri_name  = nmstr;
             vsym.sec_names = NULL;
             vsym.size      = sym->data_v1.p_name.namelen;
@@ -1288,9 +1290,9 @@ static ULong DEBUG_SnarfCodeView(
 
          if (sym->generic.id==S_PUB_V2 /*VG_(needs).data_syms*/) {
             nmstr = ML_(addStr)(di, symname, k);
-            vsym.addr      = bias + sectp[sym->data_v2.segment-1].VirtualAddress
+            vsym.avmas.main = bias + sectp[sym->data_v2.segment-1].VirtualAddress
                                   + sym->data_v2.offset;
-            vsym.tocptr    = 0;
+            SET_TOCPTR_AVMA(vsym.avmas, 0);
             vsym.pri_name  = nmstr;
             vsym.sec_names = NULL;
             vsym.size      = 4000;
@@ -1322,9 +1324,9 @@ static ULong DEBUG_SnarfCodeView(
          if (1  /*sym->generic.id==S_PUB_FUNC1_V3 
                   || sym->generic.id==S_PUB_FUNC2_V3*/) {
             nmstr = ML_(addStr)(di, symname, k);
-            vsym.addr      = bias + sectp[sym->public_v3.segment-1].VirtualAddress
+            vsym.avmas.main = bias + sectp[sym->public_v3.segment-1].VirtualAddress
                                   + sym->public_v3.offset;
-            vsym.tocptr    = 0;
+            SET_TOCPTR_AVMA(vsym.avmas, 0);
             vsym.pri_name  = nmstr;
             vsym.sec_names = NULL;
             vsym.size      = 4000;
@@ -1358,9 +1360,9 @@ static ULong DEBUG_SnarfCodeView(
                               sym->proc_v1.p_name.namelen);
          symname[sym->proc_v1.p_name.namelen] = '\0';
          nmstr = ML_(addStr)(di, symname, sym->proc_v1.p_name.namelen);
-         vsym.addr      = bias + sectp[sym->proc_v1.segment-1].VirtualAddress
+         vsym.avmas.main = bias + sectp[sym->proc_v1.segment-1].VirtualAddress
                                + sym->proc_v1.offset;
-         vsym.tocptr    = 0;
+         SET_TOCPTR_AVMA(vsym.avmas, 0);
          vsym.pri_name  = nmstr;
          vsym.sec_names = NULL;
          vsym.size      = sym->proc_v1.proc_len;
@@ -1369,7 +1371,7 @@ static ULong DEBUG_SnarfCodeView(
          if (debug)
              VG_(message)(Vg_UserMsg,
                          "  Adding function %s addr=%#lx length=%d\n",
-                         symname, vsym.addr, vsym.size );
+                         symname, vsym.avmas.main, vsym.size );
          ML_(addSym)( di, &vsym );
          n_syms_read++;
          break;
@@ -1380,9 +1382,9 @@ static ULong DEBUG_SnarfCodeView(
                               sym->proc_v2.p_name.namelen);
          symname[sym->proc_v2.p_name.namelen] = '\0';
          nmstr = ML_(addStr)(di, symname, sym->proc_v2.p_name.namelen);
-         vsym.addr      = bias + sectp[sym->proc_v2.segment-1].VirtualAddress
+         vsym.avmas.main = bias + sectp[sym->proc_v2.segment-1].VirtualAddress
                                + sym->proc_v2.offset;
-         vsym.tocptr    = 0;
+         SET_TOCPTR_AVMA(vsym.avmas, 0);
          vsym.pri_name  = nmstr;
          vsym.sec_names = NULL;
          vsym.size      = sym->proc_v2.proc_len;
@@ -1391,7 +1393,7 @@ static ULong DEBUG_SnarfCodeView(
          if (debug)
             VG_(message)(Vg_UserMsg,
                          "  Adding function %s addr=%#lx length=%d\n",
-                         symname, vsym.addr, vsym.size );
+                         symname, vsym.avmas.main, vsym.size );
          ML_(addSym)( di, &vsym );
          n_syms_read++;
          break;
@@ -1404,9 +1406,9 @@ static ULong DEBUG_SnarfCodeView(
          if (1) {
             nmstr = ML_(addStr)(di, sym->proc_v3.name,
                                     VG_(strlen)(sym->proc_v3.name));
-            vsym.addr      = bias + sectp[sym->proc_v3.segment-1].VirtualAddress
+            vsym.avmas.main = bias + sectp[sym->proc_v3.segment-1].VirtualAddress
                                   + sym->proc_v3.offset;
-            vsym.tocptr    = 0;
+            SET_TOCPTR_AVMA(vsym.avmas, 0);
             vsym.pri_name  = nmstr;
             vsym.sec_names = NULL;
             vsym.size      = sym->proc_v3.proc_len;
@@ -1517,23 +1519,23 @@ static ULong DEBUG_SnarfLinetab(
           DebugInfo* di,
           PtrdiffT bias,
           IMAGE_SECTION_HEADER* sectp,
-          Char* linetab,
+          void* linetab,
           Int size
        )
 {
    //VG_(printf)("DEBUG_SnarfLinetab %p %p %p %d\n", di, sectp, linetab, size);
    Int                file_segcount;
-   Char               filename[WIN32_PATH_MAX];
-   UInt               * filetab;
-   UChar              * fn;
+   HChar              filename[WIN32_PATH_MAX];
+   const UInt         * filetab;
+   const UChar        * fn;
    Int                i;
    Int                k;
-   UInt               * lt_ptr;
+   const UInt         * lt_ptr;
    Int                nfile;
    Int                nseg;
    union any_size     pnt;
    union any_size     pnt2;
-   struct startend    * start;
+   const struct startend * start;
    Int                this_seg;
 
    Bool  debug = di->trace_symtab;
@@ -1551,36 +1553,37 @@ static ULong DEBUG_SnarfLinetab(
    nfile = *pnt.s++;
    nseg  = *pnt.s++;
 
-   filetab = (unsigned int *) pnt.c;
+   filetab = pnt.ui;
 
    /*
     * Now count up the number of segments in the file.
     */
    nseg = 0;
    for (i = 0; i < nfile; i++) {
-      pnt2.c = linetab + filetab[i];
+      pnt2.c = (HChar *)linetab + filetab[i];
       nseg += *pnt2.s;
    }
 
    this_seg = 0;
    for (i = 0; i < nfile; i++) {
-      UChar *fnmstr;
-      UChar *dirstr;
+      HChar *fnmstr;
+      HChar *dirstr;
+      UInt  fnmdirstr_ix;
 
       /*
        * Get the pointer into the segment information.
        */
-      pnt2.c = linetab + filetab[i];
+      pnt2.c = (HChar *)linetab + filetab[i];
       file_segcount = *pnt2.s;
 
       pnt2.ui++;
-      lt_ptr = (unsigned int *) pnt2.c;
-      start = (struct startend *) (lt_ptr + file_segcount);
+      lt_ptr = pnt2.ui;
+      start = (const struct startend *) (lt_ptr + file_segcount);
 
       /*
        * Now snarf the filename for all of the segments for this file.
        */
-      fn = (UChar*) (start + file_segcount);
+      fn = (const UChar*) (start + file_segcount);
       /* fn now points at a Pascal-style string, that is, the first
          byte is the length, and the remaining up to 255 (presumably)
          are the contents. */
@@ -1597,12 +1600,13 @@ static ULong DEBUG_SnarfLinetab(
       k = VG_(strlen)(fnmstr);
       dirstr = ML_(addStr)(di, filename, *fn - k);
       fnmstr = ML_(addStr)(di, fnmstr, k);
+      fnmdirstr_ix = ML_(addFnDn) (di, fnmstr, dirstr);
 
       for (k = 0; k < file_segcount; k++, this_seg++) {
          Int linecount;
          Int segno;
 
-         pnt2.c = linetab + lt_ptr[k];
+         pnt2.c = (HChar *)linetab + lt_ptr[k];
 
          segno = *pnt2.s++;
          linecount = *pnt2.s++;
@@ -1625,11 +1629,13 @@ static ULong DEBUG_SnarfLinetab(
                if (debug)
                   VG_(message)(Vg_UserMsg,
                      "  Adding line %d addr=%#lx end=%#lx\n", 
-                        ((unsigned short *)(pnt2.ui + linecount))[j],
+                        ((const unsigned short *)(pnt2.ui + linecount))[j],
                         startaddr, endaddr );
                   ML_(addLineInfo)(
-                     di, fnmstr, dirstr, startaddr, endaddr,
-                     ((unsigned short *)(pnt2.ui + linecount))[j], j );
+                     di, 
+                     fnmdirstr_ix,
+                     startaddr, endaddr,
+                     ((const unsigned short *)(pnt2.ui + linecount))[j], j );
                   n_lines_read++;
                }
             }
@@ -1687,11 +1693,11 @@ static ULong codeview_dump_linetab2(
                 DebugInfo* di,
                 Addr bias,
                 IMAGE_SECTION_HEADER* sectp,
-                Char* linetab,
+                HChar* linetab,
                 DWORD size,
-                Char* strimage,
+                HChar* strimage,
                 DWORD strsize,
-                Char* pfx
+                const HChar* pfx
              )
 {
    DWORD       offset;
@@ -1707,9 +1713,10 @@ static ULong codeview_dump_linetab2(
    offset = *((DWORD*)linetab + 1);
    lbh = (struct codeview_linetab2_block*)(linetab + 8 + offset);
 
-   while ((Char*)lbh < linetab + size) {
+   while ((HChar*)lbh < linetab + size) {
 
       HChar *filename, *dirname;
+      UInt filedirname_ix;
       Addr svma_s, svma_e;
       if (lbh->header != 0x000000f2) {
          /* FIXME: should also check that whole lbh fits in linetab + size */
@@ -1750,6 +1757,8 @@ static ULong codeview_dump_linetab2(
       if (debug)
          VG_(printf)("%s  file=%s\n", pfx, filename);
 
+      filedirname_ix = ML_(addFnDn) (di, filename, dirname);
+
       for (i = 0; i < lbh->nlines; i++) {
          if (debug)
             VG_(printf)("%s  offset=%08x line=%d\n",
@@ -1765,7 +1774,8 @@ static ULong codeview_dump_linetab2(
             if (debug)
                VG_(printf)("%s  line %d: %08lx to %08lx\n",
                            pfx, lbh->l[i].lineno ^ 0x80000000, svma_s, svma_e);
-            ML_(addLineInfo)( di, filename, dirname,
+            ML_(addLineInfo)( di, 
+                              filedirname_ix,
                               bias + svma_s,
                               bias + svma_e + 1,
                               lbh->l[i].lineno ^ 0x80000000, 0 );
@@ -1779,7 +1789,8 @@ static ULong codeview_dump_linetab2(
             VG_(printf)("%s  line %d: %08lx to %08lx\n",
                         pfx, lbh->l[ lbh->nlines-1  ].lineno ^ 0x80000000,
                         svma_s, svma_e);
-          ML_(addLineInfo)( di, filename, dirname,
+          ML_(addLineInfo)( di, 
+                            filedirname_ix,
                             bias + svma_s,
                             bias + svma_e + 1,
                             lbh->l[lbh->nlines-1].lineno ^ 0x80000000, 0 );
@@ -1799,13 +1810,14 @@ static ULong codeview_dump_linetab2(
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
 
-static Int cmp_FPO_DATA_for_canonicalisation ( void* f1V, void* f2V )
+static Int cmp_FPO_DATA_for_canonicalisation ( const void* f1V,
+                                               const void* f2V )
 {
    /* Cause FPO data to be sorted first in ascending order of range
       starts, and for entries with the same range start, with the
       shorter range (length) first. */
-   FPO_DATA* f1 = (FPO_DATA*)f1V;
-   FPO_DATA* f2 = (FPO_DATA*)f2V;
+   const FPO_DATA* f1 = f1V;
+   const FPO_DATA* f2 = f2V;
    if (f1->ulOffStart < f2->ulOffStart) return -1;
    if (f1->ulOffStart > f2->ulOffStart) return  1;
    if (f1->cbProcSize < f2->cbProcSize) return -1;
@@ -2125,7 +2137,7 @@ static void pdb_dump( struct pdb_reader* pdb,
          n_line2s_read
             += codeview_dump_linetab2(
                   di, pe_avma, sectp_avma,
-                      (char*)modimage + symbol_size + lineno_size,
+                      (HChar*)modimage + symbol_size + lineno_size,
                       total_size - (symbol_size + lineno_size),
                   /* if filesimage is NULL, pass that directly onwards
                      to codeview_dump_linetab2, so it knows not to
@@ -2177,7 +2189,7 @@ Bool ML_(read_pdb_debug_info)(
         PtrdiffT   obj_bias,
         void*      pdbimage,
         SizeT      n_pdbimage,
-        Char*      pdbname,
+        HChar*     pdbname,
         ULong      pdbmtime
      )
 {
@@ -2405,7 +2417,7 @@ HChar* ML_(find_name_of_pdb_file)( HChar* pename )
    /* This is a giant kludge, of the kind "you did WTF?!?", but it
       works. */
    Bool   do_cleanup = False;
-   HChar  tmpname[100], tmpnameroot[50];
+   HChar  tmpname[VG_(mkstemp_fullname_bufsz)(50-1)], tmpnameroot[50];
    Int    fd, r;
    HChar* res = NULL;
 
@@ -2427,9 +2439,9 @@ HChar* ML_(find_name_of_pdb_file)( HChar* pename )
    /* Make up the command to run, essentially:
       sh -c "strings (pename) | egrep '\.pdb|\.PDB' > (tmpname)"
    */
-   HChar* sh      = "/bin/sh";
-   HChar* strings = "/usr/bin/strings";
-   HChar* egrep   = "/usr/bin/egrep";
+   const HChar* sh      = "/bin/sh";
+   const HChar* strings = "/usr/bin/strings";
+   const HChar* egrep   = "/usr/bin/egrep";
 
    /* (sh) -c "(strings) (pename) | (egrep) 'pdb' > (tmpname) */
    Int cmdlen = VG_(strlen)(strings) + VG_(strlen)(pename)

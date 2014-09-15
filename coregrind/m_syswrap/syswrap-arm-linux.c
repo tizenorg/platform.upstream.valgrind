@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Nicholas Nethercote
+   Copyright (C) 2000-2013 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2008-2012 Evan Geller
+   Copyright (C) 2008-2013 Evan Geller
       gaze@bea.ms
 
    This program is free software; you can redistribute it and/or
@@ -170,14 +170,11 @@ static SysRes do_clone ( ThreadId ptid,
                          Int *child_tidptr, 
                          Addr child_tls)
 {
-   const Bool debug = False;
-
    ThreadId ctid = VG_(alloc_ThreadState)();
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UInt r0;
    UWord *stack;
-   NSegment const* seg;
    SysRes res;
    vki_sigset_t blockall, savedmask;
 
@@ -215,20 +212,7 @@ static SysRes do_clone ( ThreadId ptid,
       See #226116. */
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
 
-   seg = VG_(am_find_nsegment)((Addr)sp);
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(sp);
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-   
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-   
-      if (debug)
-         VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-         ctid, seg->start, VG_PGROUNDUP(sp));
-   } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with sp+%#lx) unmapped\n", ctid, sp);
-      ctst->client_stack_szB  = 0;
-   }
+   ML_(guess_and_register_stack) (sp, ctst);
 
    vg_assert(VG_(owns_BigLock_LL)(ptid));
    VG_TRACK ( pre_thread_ll_create, ptid, ctid );
@@ -294,41 +278,43 @@ static void assign_guest_tls(ThreadId tid, Addr tlsptr)
 static SysRes sys_set_tls ( ThreadId tid, Addr tlsptr )
 {
    assign_guest_tls(tid, tlsptr);
-#if defined(ANDROID_HARDWARE_emulator)
-   /* Android emulator does not provide an hw tls register.
-      So, the tls register is emulated by the kernel.
-      This emulated value is set by the __NR_ARM_set_tls syscall.
-      The emulated value must be read by the kernel helper function
-      located at 0xffff0fe0.
-      
-      The emulated tlsptr is located at 0xffff0ff0
-      (so slightly after the kernel helper function).
-      Note that applications are not supposed to read this directly.
-      
-      For compatibility : if there is a hw tls register, the kernel
-      will put at 0xffff0fe0 the instructions to read it, so
-      as to have old applications calling the kernel helper
-      working properly.
 
-      For having emulated guest TLS working correctly with
-      Valgrind, it is needed to execute the syscall to set
-      the emulated TLS value in addition to the assignment
-      of TPIDRURO.
+   if (KernelVariantiS(KernelVariant_android_no_hw_tls,
+                       VG_(clo_kernel_variant))) {
+      /* Android emulator does not provide an hw tls register.
+         So, the tls register is emulated by the kernel.
+         This emulated value is set by the __NR_ARM_set_tls syscall.
+         The emulated value must be read by the kernel helper function
+         located at 0xffff0fe0.
+      
+         The emulated tlsptr is located at 0xffff0ff0
+         (so slightly after the kernel helper function).
+         Note that applications are not supposed to read this directly.
+      
+         For compatibility : if there is a hw tls register, the kernel
+         will put at 0xffff0fe0 the instructions to read it, so
+         as to have old applications calling the kernel helper
+         working properly.
 
-      Note: the below means that if we need thread local storage
-      for Valgrind host, then there will be a conflict between
-      the need of the guest tls and of the host tls.
-      If all the guest code would cleanly call 0xffff0fe0,
-      then we might maybe intercept this. However, at least
-      __libc_preinit reads directly 0xffff0ff0.
-   */
-   /* ??? might call the below if auxv->u.a_val & VKI_HWCAP_TLS ???
-      Unclear if real hardware having tls hw register sets
-      VKI_HWCAP_TLS. */
-   return VG_(do_syscall1) (__NR_ARM_set_tls, tlsptr);
-#else
-   return VG_(mk_SysRes_Success)( 0 );
-#endif
+         For having emulated guest TLS working correctly with
+         Valgrind, it is needed to execute the syscall to set
+         the emulated TLS value in addition to the assignment
+         of TPIDRURO.
+
+         Note: the below means that if we need thread local storage
+         for Valgrind host, then there will be a conflict between
+         the need of the guest tls and of the host tls.
+         If all the guest code would cleanly call 0xffff0fe0,
+         then we might maybe intercept this. However, at least
+         __libc_preinit reads directly 0xffff0ff0.
+      */
+      /* ??? might call the below if auxv->u.a_val & VKI_HWCAP_TLS ???
+         Unclear if real hardware having tls hw register sets
+         VKI_HWCAP_TLS. */
+      return VG_(do_syscall1) (__NR_ARM_set_tls, tlsptr);
+   } else {
+      return VG_(mk_SysRes_Success)( 0 );
+   }
 }
 
 /* ---------------------------------------------------------------------
@@ -344,41 +330,6 @@ static SysRes sys_set_tls ( ThreadId tid, Addr tlsptr )
    aren't visible outside this file, but that requires even more macro
    magic. */
 
-DECL_TEMPLATE(arm_linux, sys_socketcall);
-DECL_TEMPLATE(arm_linux, sys_socket);
-DECL_TEMPLATE(arm_linux, sys_setsockopt);
-DECL_TEMPLATE(arm_linux, sys_getsockopt);
-DECL_TEMPLATE(arm_linux, sys_connect);
-DECL_TEMPLATE(arm_linux, sys_accept);
-DECL_TEMPLATE(arm_linux, sys_accept4);
-DECL_TEMPLATE(arm_linux, sys_sendto);
-DECL_TEMPLATE(arm_linux, sys_recvfrom);
-//XXX: Semaphore code ripped from AMD64.
-DECL_TEMPLATE(arm_linux, sys_semget);
-DECL_TEMPLATE(arm_linux, sys_semop);
-DECL_TEMPLATE(arm_linux, sys_semctl);
-DECL_TEMPLATE(arm_linux, sys_semtimedop);
-//XXX: Shared memory code ripped from AMD64
-//
-DECL_TEMPLATE(arm_linux, wrap_sys_shmat);
-DECL_TEMPLATE(arm_linux, sys_shmget);
-DECL_TEMPLATE(arm_linux, sys_shmdt);
-DECL_TEMPLATE(arm_linux, sys_shmctl);
-DECL_TEMPLATE(arm_linux, sys_sendmsg);
-DECL_TEMPLATE(arm_linux, sys_recvmsg);
-//msg* code from AMD64
-DECL_TEMPLATE(arm_linux, sys_msgget);
-DECL_TEMPLATE(arm_linux, sys_msgrcv);
-DECL_TEMPLATE(arm_linux, sys_msgsnd);
-DECL_TEMPLATE(arm_linux, sys_msgctl);
-DECL_TEMPLATE(arm_linux, sys_shutdown);
-DECL_TEMPLATE(arm_linux, sys_bind);
-DECL_TEMPLATE(arm_linux, sys_listen);
-DECL_TEMPLATE(arm_linux, sys_getsockname);
-DECL_TEMPLATE(arm_linux, sys_getpeername);
-DECL_TEMPLATE(arm_linux, sys_socketpair);
-DECL_TEMPLATE(arm_linux, sys_send);
-DECL_TEMPLATE(arm_linux, sys_recv);
 DECL_TEMPLATE(arm_linux, sys_mmap2);
 DECL_TEMPLATE(arm_linux, sys_stat64);
 DECL_TEMPLATE(arm_linux, sys_lstat64);
@@ -391,652 +342,6 @@ DECL_TEMPLATE(arm_linux, sys_sigsuspend);
 DECL_TEMPLATE(arm_linux, sys_set_tls);
 DECL_TEMPLATE(arm_linux, sys_cacheflush);
 DECL_TEMPLATE(arm_linux, sys_ptrace);
-
-PRE(sys_socketcall)
-{
-#  define ARG2_0  (((UWord*)ARG2)[0])
-#  define ARG2_1  (((UWord*)ARG2)[1])
-#  define ARG2_2  (((UWord*)ARG2)[2])
-#  define ARG2_3  (((UWord*)ARG2)[3])
-#  define ARG2_4  (((UWord*)ARG2)[4])
-#  define ARG2_5  (((UWord*)ARG2)[5])
-
-   *flags |= SfMayBlock;
-   PRINT("sys_socketcall ( %ld, %#lx )",ARG1,ARG2);
-   PRE_REG_READ2(long, "socketcall", int, call, unsigned long *, args);
-
-   switch (ARG1 /* request */) {
-
-   case VKI_SYS_SOCKETPAIR:
-     /* int socketpair(int d, int type, int protocol, int sv[2]); */
-      PRE_MEM_READ( "socketcall.socketpair(args)", ARG2, 4*sizeof(Addr) );
-      ML_(generic_PRE_sys_socketpair)( tid, ARG2_0, ARG2_1, ARG2_2, ARG2_3 );
-      break;
-
-   case VKI_SYS_SOCKET:
-     /* int socket(int domain, int type, int protocol); */
-      PRE_MEM_READ( "socketcall.socket(args)", ARG2, 3*sizeof(Addr) );
-      break;
-
-   case VKI_SYS_BIND:
-     /* int bind(int sockfd, struct sockaddr *my_addr,
-   int addrlen); */
-      PRE_MEM_READ( "socketcall.bind(args)", ARG2, 3*sizeof(Addr) );
-      ML_(generic_PRE_sys_bind)( tid, ARG2_0, ARG2_1, ARG2_2 );
-      break;
-
-   case VKI_SYS_LISTEN:
-     /* int listen(int s, int backlog); */
-      PRE_MEM_READ( "socketcall.listen(args)", ARG2, 2*sizeof(Addr) );
-      break;
-
-   case VKI_SYS_ACCEPT: {
-     /* int accept(int s, struct sockaddr *addr, int *addrlen); */
-      PRE_MEM_READ( "socketcall.accept(args)", ARG2, 3*sizeof(Addr) );
-      ML_(generic_PRE_sys_accept)( tid, ARG2_0, ARG2_1, ARG2_2 );
-      break;
-   }
-
-   case VKI_SYS_ACCEPT4: {
-      /*int accept(int s, struct sockaddr *add, int *addrlen, int flags)*/
-      PRE_MEM_READ( "socketcall.accept4(args)", ARG2, 4*sizeof(Addr) );
-      ML_(generic_PRE_sys_accept)( tid, ARG2_0, ARG2_1, ARG2_2 );
-      break;
-   }
-
-   case VKI_SYS_SENDTO:
-     /* int sendto(int s, const void *msg, int len,
-                    unsigned int flags,
-                    const struct sockaddr *to, int tolen); */
-     PRE_MEM_READ( "socketcall.sendto(args)", ARG2, 6*sizeof(Addr) );
-     ML_(generic_PRE_sys_sendto)( tid, ARG2_0, ARG2_1, ARG2_2,
-              ARG2_3, ARG2_4, ARG2_5 );
-     break;
-
-   case VKI_SYS_SEND:
-     /* int send(int s, const void *msg, size_t len, int flags); */
-     PRE_MEM_READ( "socketcall.send(args)", ARG2, 4*sizeof(Addr) );
-     ML_(generic_PRE_sys_send)( tid, ARG2_0, ARG2_1, ARG2_2 );
-     break;
-
-   case VKI_SYS_RECVFROM:
-     /* int recvfrom(int s, void *buf, int len, unsigned int flags,
-   struct sockaddr *from, int *fromlen); */
-     PRE_MEM_READ( "socketcall.recvfrom(args)", ARG2, 6*sizeof(Addr) );
-     ML_(generic_PRE_sys_recvfrom)( tid, ARG2_0, ARG2_1, ARG2_2,
-                ARG2_3, ARG2_4, ARG2_5 );
-     break;
-
-   case VKI_SYS_RECV:
-     /* int recv(int s, void *buf, int len, unsigned int flags); */
-     /* man 2 recv says:
-         The  recv call is normally used only on a connected socket
-         (see connect(2)) and is identical to recvfrom with a  NULL
-         from parameter.
-     */
-     PRE_MEM_READ( "socketcall.recv(args)", ARG2, 4*sizeof(Addr) );
-     ML_(generic_PRE_sys_recv)( tid, ARG2_0, ARG2_1, ARG2_2 );
-     break;
-
-   case VKI_SYS_CONNECT:
-     /* int connect(int sockfd,
-   struct sockaddr *serv_addr, int addrlen ); */
-     PRE_MEM_READ( "socketcall.connect(args)", ARG2, 3*sizeof(Addr) );
-     ML_(generic_PRE_sys_connect)( tid, ARG2_0, ARG2_1, ARG2_2 );
-     break;
-
-   case VKI_SYS_SETSOCKOPT:
-     /* int setsockopt(int s, int level, int optname,
-   const void *optval, int optlen); */
-     PRE_MEM_READ( "socketcall.setsockopt(args)", ARG2, 5*sizeof(Addr) );
-     ML_(generic_PRE_sys_setsockopt)( tid, ARG2_0, ARG2_1, ARG2_2,
-                  ARG2_3, ARG2_4 );
-     break;
-
-   case VKI_SYS_GETSOCKOPT:
-     /* int getsockopt(int s, int level, int optname,
-   void *optval, socklen_t *optlen); */
-     PRE_MEM_READ( "socketcall.getsockopt(args)", ARG2, 5*sizeof(Addr) );
-     ML_(linux_PRE_sys_getsockopt)( tid, ARG2_0, ARG2_1, ARG2_2,
-                  ARG2_3, ARG2_4 );
-     break;
-
-   case VKI_SYS_GETSOCKNAME:
-     /* int getsockname(int s, struct sockaddr* name, int* namelen) */
-     PRE_MEM_READ( "socketcall.getsockname(args)", ARG2, 3*sizeof(Addr) );
-     ML_(generic_PRE_sys_getsockname)( tid, ARG2_0, ARG2_1, ARG2_2 );
-     break;
-
-   case VKI_SYS_GETPEERNAME:
-     /* int getpeername(int s, struct sockaddr* name, int* namelen) */
-     PRE_MEM_READ( "socketcall.getpeername(args)", ARG2, 3*sizeof(Addr) );
-     ML_(generic_PRE_sys_getpeername)( tid, ARG2_0, ARG2_1, ARG2_2 );
-     break;
-
-   case VKI_SYS_SHUTDOWN:
-     /* int shutdown(int s, int how); */
-     PRE_MEM_READ( "socketcall.shutdown(args)", ARG2, 2*sizeof(Addr) );
-     break;
-
-   case VKI_SYS_SENDMSG: {
-     /* int sendmsg(int s, const struct msghdr *msg, int flags); */
-
-     /* this causes warnings, and I don't get why. glibc bug?
-      * (after all it's glibc providing the arguments array)
-       PRE_MEM_READ( "socketcall.sendmsg(args)", ARG2, 3*sizeof(Addr) );
-     */
-     ML_(generic_PRE_sys_sendmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1 );
-     break;
-   }
-
-   case VKI_SYS_RECVMSG: {
-     /* int recvmsg(int s, struct msghdr *msg, int flags); */
-
-     /* this causes warnings, and I don't get why. glibc bug?
-      * (after all it's glibc providing the arguments array)
-       PRE_MEM_READ("socketcall.recvmsg(args)", ARG2, 3*sizeof(Addr) );
-     */
-     ML_(generic_PRE_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1 );
-     break;
-   }
-
-   default:
-     VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx",ARG1);
-     SET_STATUS_Failure( VKI_EINVAL );
-     break;
-   }
-#  undef ARG2_0
-#  undef ARG2_1
-#  undef ARG2_2
-#  undef ARG2_3
-#  undef ARG2_4
-#  undef ARG2_5
-}
-
-POST(sys_socketcall)
-{
-#  define ARG2_0  (((UWord*)ARG2)[0])
-#  define ARG2_1  (((UWord*)ARG2)[1])
-#  define ARG2_2  (((UWord*)ARG2)[2])
-#  define ARG2_3  (((UWord*)ARG2)[3])
-#  define ARG2_4  (((UWord*)ARG2)[4])
-#  define ARG2_5  (((UWord*)ARG2)[5])
-
-  SysRes r;
-  vg_assert(SUCCESS);
-  switch (ARG1 /* request */) {
-
-  case VKI_SYS_SOCKETPAIR:
-    r = ML_(generic_POST_sys_socketpair)(
-                tid, VG_(mk_SysRes_Success)(RES),
-                ARG2_0, ARG2_1, ARG2_2, ARG2_3
-                );
-    SET_STATUS_from_SysRes(r);
-    break;
-
-  case VKI_SYS_SOCKET:
-    r = ML_(generic_POST_sys_socket)( tid, VG_(mk_SysRes_Success)(RES) );
-    SET_STATUS_from_SysRes(r);
-    break;
-
-  case VKI_SYS_BIND:
-    /* int bind(int sockfd, struct sockaddr *my_addr,
-       int addrlen); */
-    break;
-
-  case VKI_SYS_LISTEN:
-    /* int listen(int s, int backlog); */
-    break;
-
-  case VKI_SYS_ACCEPT:
-  case VKI_SYS_ACCEPT4:
-    /* int accept(int s, struct sockaddr *addr, int *addrlen); */
-    /* int accept4(int s, struct sockaddr *addr, int *addrlen, int flags); */
-    r = ML_(generic_POST_sys_accept)( tid, VG_(mk_SysRes_Success)(RES),
-                  ARG2_0, ARG2_1, ARG2_2 );
-    SET_STATUS_from_SysRes(r);
-    break;
-
-  case VKI_SYS_SENDTO:
-    break;
-
-  case VKI_SYS_SEND:
-    break;
-
-  case VKI_SYS_RECVFROM:
-    ML_(generic_POST_sys_recvfrom)( tid, VG_(mk_SysRes_Success)(RES),
-                ARG2_0, ARG2_1, ARG2_2,
-                ARG2_3, ARG2_4, ARG2_5 );
-    break;
-
-  case VKI_SYS_RECV:
-    ML_(generic_POST_sys_recv)( tid, RES, ARG2_0, ARG2_1, ARG2_2 );
-    break;
-
-  case VKI_SYS_CONNECT:
-    break;
-
-  case VKI_SYS_SETSOCKOPT:
-    break;
-
-  case VKI_SYS_GETSOCKOPT:
-    ML_(linux_POST_sys_getsockopt)( tid, VG_(mk_SysRes_Success)(RES),
-                  ARG2_0, ARG2_1,
-                  ARG2_2, ARG2_3, ARG2_4 );
-    break;
-
-  case VKI_SYS_GETSOCKNAME:
-    ML_(generic_POST_sys_getsockname)( tid, VG_(mk_SysRes_Success)(RES),
-                   ARG2_0, ARG2_1, ARG2_2 );
-    break;
-
-  case VKI_SYS_GETPEERNAME:
-    ML_(generic_POST_sys_getpeername)( tid, VG_(mk_SysRes_Success)(RES),
-                   ARG2_0, ARG2_1, ARG2_2 );
-    break;
-
-  case VKI_SYS_SHUTDOWN:
-    break;
-
-  case VKI_SYS_SENDMSG:
-    break;
-
-  case VKI_SYS_RECVMSG:
-    ML_(generic_POST_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1, RES );
-    break;
-
-  default:
-    VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx",ARG1);
-    VG_(core_panic)("... bye!\n");
-    break; /*NOTREACHED*/
-  }
-#  undef ARG2_0
-#  undef ARG2_1
-#  undef ARG2_2
-#  undef ARG2_3
-#  undef ARG2_4
-#  undef ARG2_5
-}
-
-PRE(sys_socket)
-{
-   PRINT("sys_socket ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "socket", int, domain, int, type, int, protocol);
-}
-POST(sys_socket)
-{
-   SysRes r;
-   vg_assert(SUCCESS);
-   r = ML_(generic_POST_sys_socket)(tid, VG_(mk_SysRes_Success)(RES));
-   SET_STATUS_from_SysRes(r);
-}
-
-PRE(sys_setsockopt)
-{
-   PRINT("sys_setsockopt ( %ld, %ld, %ld, %#lx, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5);
-   PRE_REG_READ5(long, "setsockopt",
-                 int, s, int, level, int, optname,
-                 const void *, optval, int, optlen);
-   ML_(generic_PRE_sys_setsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
-}
-
-PRE(sys_getsockopt)
-{
-   PRINT("sys_getsockopt ( %ld, %ld, %ld, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
-   PRE_REG_READ5(long, "getsockopt",
-                 int, s, int, level, int, optname,
-                 void *, optval, int, *optlen);
-   ML_(linux_PRE_sys_getsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
-}
-POST(sys_getsockopt)
-{
-   vg_assert(SUCCESS);
-   ML_(linux_POST_sys_getsockopt)(tid, VG_(mk_SysRes_Success)(RES),
-                                         ARG1,ARG2,ARG3,ARG4,ARG5);
-}
-
-PRE(sys_connect)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_connect ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "connect",
-                 int, sockfd, struct sockaddr *, serv_addr, int, addrlen);
-   ML_(generic_PRE_sys_connect)(tid, ARG1,ARG2,ARG3);
-}
-
-PRE(sys_accept)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_accept ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "accept",
-                 int, s, struct sockaddr *, addr, int, *addrlen);
-   ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
-}
-POST(sys_accept)
-{
-   SysRes r;
-   vg_assert(SUCCESS);
-   r = ML_(generic_POST_sys_accept)(tid, VG_(mk_SysRes_Success)(RES),
-                                         ARG1,ARG2,ARG3);
-   SET_STATUS_from_SysRes(r);
-}
-
-PRE(sys_accept4)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_accept4 ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "accept4",
-                 int, s, struct sockaddr *, addr, int, *addrlen, int, flags);
-   ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
-}
-POST(sys_accept4)
-{
-   SysRes r;
-   vg_assert(SUCCESS);
-   r = ML_(generic_POST_sys_accept)(tid, VG_(mk_SysRes_Success)(RES),
-                                         ARG1,ARG2,ARG3);
-   SET_STATUS_from_SysRes(r);
-}
-
-PRE(sys_sendto)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_sendto ( %ld, %#lx, %ld, %lu, %#lx, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
-   PRE_REG_READ6(long, "sendto",
-                 int, s, const void *, msg, int, len, 
-                 unsigned int, flags, 
-                 const struct sockaddr *, to, int, tolen);
-   ML_(generic_PRE_sys_sendto)(tid, ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
-}
-
-PRE(sys_recvfrom)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_recvfrom ( %ld, %#lx, %ld, %lu, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
-   PRE_REG_READ6(long, "recvfrom",
-                 int, s, void *, buf, int, len, unsigned int, flags,
-                 struct sockaddr *, from, int *, fromlen);
-   ML_(generic_PRE_sys_recvfrom)(tid, ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
-}
-POST(sys_recvfrom)
-{
-   vg_assert(SUCCESS);
-   ML_(generic_POST_sys_recvfrom)(tid, VG_(mk_SysRes_Success)(RES),
-                                       ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
-}
-
-PRE(sys_sendmsg)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_sendmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "sendmsg",
-                 int, s, const struct msghdr *, msg, int, flags);
-   ML_(generic_PRE_sys_sendmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
-}
-
-PRE(sys_recvmsg)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_recvmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "recvmsg", int, s, struct msghdr *, msg, int, flags);
-   ML_(generic_PRE_sys_recvmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
-}
-POST(sys_recvmsg)
-{
-   ML_(generic_POST_sys_recvmsg)(tid, "msg", (struct vki_msghdr *)ARG2, RES);
-}
-
-//XXX: Semaphore code ripped from AMD64.
-PRE(sys_semget)
-{
-   PRINT("sys_semget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "semget", vki_key_t, key, int, nsems, int, semflg);
-}
-
-PRE(sys_semop)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_semop ( %ld, %#lx, %lu )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "semop",
-                 int, semid, struct sembuf *, sops, unsigned, nsoops);
-   ML_(generic_PRE_sys_semop)(tid, ARG1,ARG2,ARG3);
-}
-
-PRE(sys_semctl)
-{
-   switch (ARG3 & ~VKI_IPC_64) {
-   case VKI_IPC_INFO:
-   case VKI_SEM_INFO:
-      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
-      PRE_REG_READ4(long, "semctl",
-                    int, semid, int, semnum, int, cmd, struct seminfo *, arg);
-      break;
-   case VKI_IPC_STAT:
-   case VKI_SEM_STAT:
-   case VKI_IPC_SET:
-      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
-      PRE_REG_READ4(long, "semctl",
-                    int, semid, int, semnum, int, cmd, struct semid_ds *, arg);
-      break;
-   case VKI_GETALL:
-   case VKI_SETALL:
-      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
-      PRE_REG_READ4(long, "semctl",
-                    int, semid, int, semnum, int, cmd, unsigned short *, arg);
-      break;
-   default:
-      PRINT("sys_semctl ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
-      PRE_REG_READ3(long, "semctl",
-                    int, semid, int, semnum, int, cmd);
-      break;
-   }
-   ML_(generic_PRE_sys_semctl)(tid, ARG1,ARG2,ARG3,ARG4);
-}
-
-POST(sys_semctl)
-{
-   ML_(generic_POST_sys_semctl)(tid, RES,ARG1,ARG2,ARG3,ARG4);
-}
-
-PRE(sys_semtimedop)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_semtimedop ( %ld, %#lx, %lu, %#lx )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "semtimedop",
-                 int, semid, struct sembuf *, sops, unsigned, nsoops,
-                 struct timespec *, timeout);
-   ML_(generic_PRE_sys_semtimedop)(tid, ARG1,ARG2,ARG3,ARG4);
-}
-
-//amd64
-PRE(sys_msgget)
-{
-   PRINT("sys_msgget ( %ld, %ld )",ARG1,ARG2);
-   PRE_REG_READ2(long, "msgget", vki_key_t, key, int, msgflg);
-}
-
-PRE(sys_msgsnd)
-{
-   PRINT("sys_msgsnd ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "msgsnd",
-                 int, msqid, struct msgbuf *, msgp, vki_size_t, msgsz, int, msgflg);
-   ML_(linux_PRE_sys_msgsnd)(tid, ARG1,ARG2,ARG3,ARG4);
-   if ((ARG4 & VKI_IPC_NOWAIT) == 0)
-      *flags |= SfMayBlock;
-}
-
-PRE(sys_msgrcv)
-{
-   PRINT("sys_msgrcv ( %ld, %#lx, %ld, %ld, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5);
-   PRE_REG_READ5(long, "msgrcv",
-                 int, msqid, struct msgbuf *, msgp, vki_size_t, msgsz,
-                 long, msgytp, int, msgflg);
-   ML_(linux_PRE_sys_msgrcv)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
-   if ((ARG4 & VKI_IPC_NOWAIT) == 0)
-      *flags |= SfMayBlock;
-}
-POST(sys_msgrcv)
-{
-   ML_(linux_POST_sys_msgrcv)(tid, RES,ARG1,ARG2,ARG3,ARG4,ARG5);
-}
-
-
-PRE(sys_msgctl)
-{
-   PRINT("sys_msgctl ( %ld, %ld, %#lx )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "msgctl",
-                 int, msqid, int, cmd, struct msqid_ds *, buf);
-   ML_(linux_PRE_sys_msgctl)(tid, ARG1,ARG2,ARG3);
-}
-POST(sys_msgctl)
-{
-   ML_(linux_POST_sys_msgctl)(tid, RES,ARG1,ARG2,ARG3);
-}
-
-//shared memory code from AMD64
-PRE(sys_shmget)
-{
-   PRINT("sys_shmget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "shmget", vki_key_t, key, vki_size_t, size, int, shmflg);
-}
-
-PRE(wrap_sys_shmat)
-{
-   UWord arg2tmp;
-   PRINT("wrap_sys_shmat ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "shmat",
-                 int, shmid, const void *, shmaddr, int, shmflg);
-   /* Round the attach address down to an VKI_SHMLBA boundary if the
-      client requested rounding.  See #222545.  This is necessary only
-      on arm-linux because VKI_SHMLBA is 4 * VKI_PAGE size; on all
-      other linux targets it is the same as the page size. */
-   if (ARG3 & VKI_SHM_RND)
-      ARG2 = VG_ROUNDDN(ARG2, VKI_SHMLBA);
-   arg2tmp = ML_(generic_PRE_sys_shmat)(tid, ARG1,ARG2,ARG3);
-   if (arg2tmp == 0)
-      SET_STATUS_Failure( VKI_EINVAL );
-   else
-      ARG2 = arg2tmp;
-}
-
-POST(wrap_sys_shmat)
-{
-   ML_(generic_POST_sys_shmat)(tid, RES,ARG1,ARG2,ARG3);
-}
-
-PRE(sys_shmdt)
-{
-   PRINT("sys_shmdt ( %#lx )",ARG1);
-   PRE_REG_READ1(long, "shmdt", const void *, shmaddr);
-   if (!ML_(generic_PRE_sys_shmdt)(tid, ARG1))
-      SET_STATUS_Failure( VKI_EINVAL );
-}
-
-POST(sys_shmdt)
-{
-   ML_(generic_POST_sys_shmdt)(tid, RES,ARG1);
-}
-
-PRE(sys_shmctl)
-{
-   PRINT("sys_shmctl ( %ld, %ld, %#lx )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "shmctl",
-                 int, shmid, int, cmd, struct shmid_ds *, buf);
-   ML_(generic_PRE_sys_shmctl)(tid, ARG1,ARG2,ARG3);
-}
-
-POST(sys_shmctl)
-{
-   ML_(generic_POST_sys_shmctl)(tid, RES,ARG1,ARG2,ARG3);
-}
-
-PRE(sys_shutdown)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_shutdown ( %ld, %ld )",ARG1,ARG2);
-   PRE_REG_READ2(int, "shutdown", int, s, int, how);
-}
-
-PRE(sys_bind)
-{
-   PRINT("sys_bind ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "bind",
-                 int, sockfd, struct sockaddr *, my_addr, int, addrlen);
-   ML_(generic_PRE_sys_bind)(tid, ARG1,ARG2,ARG3);
-}
-
-PRE(sys_listen)
-{
-   PRINT("sys_listen ( %ld, %ld )",ARG1,ARG2);
-   PRE_REG_READ2(long, "listen", int, s, int, backlog);
-}
-
-PRE(sys_getsockname)
-{
-   PRINT("sys_getsockname ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "getsockname",
-                 int, s, struct sockaddr *, name, int *, namelen);
-   ML_(generic_PRE_sys_getsockname)(tid, ARG1,ARG2,ARG3);
-}
-POST(sys_getsockname)
-{
-   vg_assert(SUCCESS);
-   ML_(generic_POST_sys_getsockname)(tid, VG_(mk_SysRes_Success)(RES),
-                                          ARG1,ARG2,ARG3);
-}
-
-PRE(sys_getpeername)
-{
-   PRINT("sys_getpeername ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
-   PRE_REG_READ3(long, "getpeername",
-                 int, s, struct sockaddr *, name, int *, namelen);
-   ML_(generic_PRE_sys_getpeername)(tid, ARG1,ARG2,ARG3);
-}
-POST(sys_getpeername)
-{
-   vg_assert(SUCCESS);
-   ML_(generic_POST_sys_getpeername)(tid, VG_(mk_SysRes_Success)(RES),
-                                          ARG1,ARG2,ARG3);
-}
-
-PRE(sys_socketpair)
-{
-   PRINT("sys_socketpair ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "socketpair",
-                 int, d, int, type, int, protocol, int*, sv);
-   ML_(generic_PRE_sys_socketpair)(tid, ARG1,ARG2,ARG3,ARG4);
-}
-POST(sys_socketpair)
-{
-   vg_assert(SUCCESS);
-   ML_(generic_POST_sys_socketpair)(tid, VG_(mk_SysRes_Success)(RES),
-                                         ARG1,ARG2,ARG3,ARG4);
-}
-
-PRE(sys_send)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_send ( %ld, %#lx, %ld, %lu )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "send",
-                 int, s, const void *, msg, int, len, 
-                 unsigned int, flags);
-
-   ML_(generic_PRE_sys_send)( tid, ARG1, ARG2, ARG3 );
-}
-
-PRE(sys_recv)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_recv ( %ld, %#lx, %ld, %lu )",ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "recv",
-                 int, s, void *, buf, int, len, unsigned int, flags);
-   ML_(generic_PRE_sys_recv)( tid, ARG1, ARG2, ARG3 );
-}
-
-POST(sys_recv)
-{
-   ML_(generic_POST_sys_recv)( tid, RES, ARG1, ARG2, ARG3 );
-}
 
 PRE(sys_mmap2)
 {
@@ -1376,6 +681,12 @@ PRE(sys_ptrace)
    case VKI_PTRACE_SETSIGINFO:
       PRE_MEM_READ( "ptrace(setsiginfo)", ARG4, sizeof(vki_siginfo_t));
       break;
+   case VKI_PTRACE_GETREGSET:
+      ML_(linux_PRE_getregset)(tid, ARG3, ARG4);
+      break;
+   case VKI_PTRACE_SETREGSET:
+      ML_(linux_PRE_setregset)(tid, ARG3, ARG4);
+      break;
    default:
       break;
    }
@@ -1414,6 +725,9 @@ POST(sys_ptrace)
        * siginfo_t are valid depending on the type of signal.
        */
       POST_MEM_WRITE( ARG4, sizeof(vki_siginfo_t));
+      break;
+   case VKI_PTRACE_GETREGSET:
+      ML_(linux_POST_getregset)(tid, ARG3, ARG4);
       break;
    default:
       break;
@@ -1567,7 +881,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    GENXY(__NR_fstatfs,           sys_fstatfs),        // 100
 //   LINX_(__NR_ioperm,            sys_ioperm),         // 101
-   PLAXY(__NR_socketcall,        sys_socketcall),     // 102
+   LINXY(__NR_socketcall,        sys_socketcall),     // 102
    LINXY(__NR_syslog,            sys_syslog),         // 103
    GENXY(__NR_setitimer,         sys_setitimer),      // 104
 
@@ -1708,7 +1022,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_setfsuid32,        sys_setfsuid),       // 215
    LINX_(__NR_setfsgid32,        sys_setfsgid),       // 216
-//zz    //   (__NR_pivot_root,        sys_pivot_root),     // 217 */Linux
+   LINX_(__NR_pivot_root,        sys_pivot_root),     // 217
    GENXY(__NR_mincore,           sys_mincore),        // 218
    GENX_(__NR_madvise,           sys_madvise),        // 219
 
@@ -1789,31 +1103,31 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY(__NR_mq_getsetattr,     sys_mq_getsetattr),  // (mq_open+5)
    LINXY(__NR_waitid,            sys_waitid),         // 280
 
-   PLAXY(__NR_socket,            sys_socket),         // 281
-   PLAX_(__NR_bind,              sys_bind),           // 282
-   PLAX_(__NR_connect,           sys_connect),        // 283
-   PLAX_(__NR_listen,            sys_listen),         // 284
-   PLAXY(__NR_accept,            sys_accept),         // 285
-   PLAXY(__NR_getsockname,       sys_getsockname),    // 286
-   PLAXY(__NR_getpeername,       sys_getpeername),    // 287
-   PLAXY(__NR_socketpair,        sys_socketpair),     // 288
-   PLAX_(__NR_send,              sys_send),
-   PLAX_(__NR_sendto,            sys_sendto),         // 290
-   PLAXY(__NR_recv,              sys_recv),
-   PLAXY(__NR_recvfrom,          sys_recvfrom),       // 292
-   PLAX_(__NR_shutdown,          sys_shutdown),       // 293
-   PLAX_(__NR_setsockopt,        sys_setsockopt),     // 294
-   PLAXY(__NR_getsockopt,        sys_getsockopt),     // 295
-   PLAX_(__NR_sendmsg,           sys_sendmsg),        // 296
-   PLAXY(__NR_recvmsg,           sys_recvmsg),        // 297
-   PLAX_(__NR_semop,             sys_semop),          // 298 
-   PLAX_(__NR_semget,            sys_semget),         // 299
-   PLAXY(__NR_semctl,            sys_semctl),         // 300
-   PLAX_(__NR_msgget,            sys_msgget),         
-   PLAX_(__NR_msgsnd,            sys_msgsnd),          
-   PLAXY(__NR_msgrcv,            sys_msgrcv),         
-   PLAXY(__NR_msgctl,            sys_msgctl),         // 304
-   PLAX_(__NR_semtimedop,        sys_semtimedop),     // 312
+   LINXY(__NR_socket,            sys_socket),         // 281
+   LINX_(__NR_bind,              sys_bind),           // 282
+   LINX_(__NR_connect,           sys_connect),        // 283
+   LINX_(__NR_listen,            sys_listen),         // 284
+   LINXY(__NR_accept,            sys_accept),         // 285
+   LINXY(__NR_getsockname,       sys_getsockname),    // 286
+   LINXY(__NR_getpeername,       sys_getpeername),    // 287
+   LINXY(__NR_socketpair,        sys_socketpair),     // 288
+   LINX_(__NR_send,              sys_send),
+   LINX_(__NR_sendto,            sys_sendto),         // 290
+   LINXY(__NR_recv,              sys_recv),
+   LINXY(__NR_recvfrom,          sys_recvfrom),       // 292
+   LINX_(__NR_shutdown,          sys_shutdown),       // 293
+   LINX_(__NR_setsockopt,        sys_setsockopt),     // 294
+   LINXY(__NR_getsockopt,        sys_getsockopt),     // 295
+   LINX_(__NR_sendmsg,           sys_sendmsg),        // 296
+   LINXY(__NR_recvmsg,           sys_recvmsg),        // 297
+   LINX_(__NR_semop,             sys_semop),          // 298 
+   LINX_(__NR_semget,            sys_semget),         // 299
+   LINXY(__NR_semctl,            sys_semctl),         // 300
+   LINX_(__NR_msgget,            sys_msgget),         
+   LINX_(__NR_msgsnd,            sys_msgsnd),          
+   LINXY(__NR_msgrcv,            sys_msgrcv),         
+   LINXY(__NR_msgctl,            sys_msgctl),         // 304
+   LINX_(__NR_semtimedop,        sys_semtimedop),     // 312
 
    LINX_(__NR_add_key,           sys_add_key),        // 286
    LINX_(__NR_request_key,       sys_request_key),    // 287
@@ -1841,13 +1155,13 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_readlinkat,    sys_readlinkat),       // 
    LINX_(__NR_fchmodat,       sys_fchmodat),         //
    LINX_(__NR_faccessat,    sys_faccessat),        //
-   PLAXY(__NR_shmat,         wrap_sys_shmat),       //305
-   PLAXY(__NR_shmdt,             sys_shmdt),          //306 
-   PLAX_(__NR_shmget,            sys_shmget),         //307 
-   PLAXY(__NR_shmctl,            sys_shmctl),         // 308 
+   LINXY(__NR_shmat,         wrap_sys_shmat),       //305
+   LINXY(__NR_shmdt,             sys_shmdt),          //306 
+   LINX_(__NR_shmget,            sys_shmget),         //307 
+   LINXY(__NR_shmctl,            sys_shmctl),         // 308 
 //   LINX_(__NR_pselect6,       sys_pselect6),         //
 
-//   LINX_(__NR_unshare,       sys_unshare),          // 310
+   LINX_(__NR_unshare,       sys_unshare),          // 310
    LINX_(__NR_set_robust_list,    sys_set_robust_list),  // 311
    LINXY(__NR_get_robust_list,    sys_get_robust_list),  // 312
 //   LINX_(__NR_splice,            sys_ni_syscall),       // 313
@@ -1861,7 +1175,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_utimensat,         sys_utimensat),        // 320
    LINXY(__NR_signalfd,          sys_signalfd),         // 321
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 322
-   LINX_(__NR_eventfd,           sys_eventfd),          // 323
+   LINXY(__NR_eventfd,           sys_eventfd),          // 323
 
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 325
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),   // 326
@@ -1883,7 +1197,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_fallocate,         sys_fallocate),        // 352
 
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 355
-   LINX_(__NR_eventfd2,          sys_eventfd2),         // 356
+   LINXY(__NR_eventfd2,          sys_eventfd2),         // 356
    LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 357
    LINXY(__NR_dup3,              sys_dup3),             // 358
    LINXY(__NR_pipe2,             sys_pipe2),            // 359
@@ -1892,8 +1206,15 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_pwritev,           sys_pwritev),          // 362
    LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 363
    LINXY(__NR_perf_event_open,   sys_perf_event_open),  // 364
-
-   PLAXY(__NR_accept4,           sys_accept4)           // 366
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 365
+   LINXY(__NR_accept4,           sys_accept4),          // 366
+   LINXY(__NR_fanotify_init,     sys_fanotify_init),    // 367
+   LINX_(__NR_fanotify_mark,     sys_fanotify_mark),    // 368
+   LINXY(__NR_prlimit64,         sys_prlimit64),        // 369
+   LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 370
+   LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 371
+   LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 372
+   LINXY(__NR_sendmmsg,          sys_sendmmsg)          // 374
 };
 
 

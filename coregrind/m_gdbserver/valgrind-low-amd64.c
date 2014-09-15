@@ -209,13 +209,13 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
    case 31: 
       if (dir == valgrind_to_gdbserver) {
          UChar fpreg80[10];
-         convert_f64le_to_f80le ((UChar *)&amd64->guest_FPREG[regno-16],
+         convert_f64le_to_f80le ((UChar *)&amd64->guest_FPREG[regno-24],
                                  fpreg80);
          VG_(transfer) (&fpreg80, buf, dir, sizeof(fpreg80), mod);
       } else {
          ULong fpreg64;
          convert_f80le_to_f64le (buf, (UChar *)&fpreg64); 
-         VG_(transfer) (&amd64->guest_FPREG[regno-16], &fpreg64,
+         VG_(transfer) (&amd64->guest_FPREG[regno-24], &fpreg64,
                         dir, sizeof(fpreg64), mod);
       }
       break;
@@ -315,8 +315,9 @@ Bool have_avx(void)
    VG_(machine_get_VexArchInfo) (&va, &vai);
    return (vai.hwcaps & VEX_HWCAPS_AMD64_AVX ? True : False);
 }
+
 static
-char* target_xml (Bool shadow_mode)
+const char* target_xml (Bool shadow_mode)
 {
    if (shadow_mode) {
 #if defined(VGO_linux)
@@ -345,6 +346,12 @@ char* target_xml (Bool shadow_mode)
    }  
 }
 
+static CORE_ADDR** target_get_dtv (ThreadState *tst)
+{
+   VexGuestAMD64State* amd64 = (VexGuestAMD64State*)&tst->arch.vex;
+   return (CORE_ADDR**)((CORE_ADDR)amd64->guest_FS_ZERO + 0x8);
+}
+
 static struct valgrind_target_ops low_target = {
    -1, // Must be computed at init time.
    regs,
@@ -353,7 +360,8 @@ static struct valgrind_target_ops low_target = {
    get_pc,
    set_pc,
    "amd64",
-   target_xml
+   target_xml,
+   target_get_dtv
 };
 
 void amd64_init_architecture (struct valgrind_target_ops *target)

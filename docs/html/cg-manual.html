@@ -2,8 +2,8 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
 <title>5. Cachegrind: a cache and branch-prediction profiler</title>
-<link rel="stylesheet" href="vg_basic.css" type="text/css">
-<meta name="generator" content="DocBook XSL Stylesheets V1.75.2">
+<link rel="stylesheet" type="text/css" href="vg_basic.css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.78.1">
 <link rel="home" href="index.html" title="Valgrind Documentation">
 <link rel="up" href="manual.html" title="Valgrind User Manual">
 <link rel="prev" href="mc-manual.html" title="4. Memcheck: a memory error detector">
@@ -17,12 +17,12 @@
 <th align="center" valign="middle">Valgrind User Manual</th>
 <td width="22px" align="center" valign="middle"><a accesskey="n" href="cl-manual.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
 </tr></table></div>
-<div class="chapter" title="5. Cachegrind: a cache and branch-prediction profiler">
-<div class="titlepage"><div><div><h2 class="title">
-<a name="cg-manual"></a>5. Cachegrind: a cache and branch-prediction profiler</h2></div></div></div>
+<div class="chapter">
+<div class="titlepage"><div><div><h1 class="title">
+<a name="cg-manual"></a>5. Cachegrind: a cache and branch-prediction profiler</h1></div></div></div>
 <div class="toc">
 <p><b>Table of Contents</b></p>
-<dl>
+<dl class="toc">
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.overview">5.1. Overview</a></span></dt>
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.profile">5.2. Using Cachegrind, cg_annotate and cg_merge</a></span></dt>
 <dd><dl>
@@ -41,25 +41,26 @@
 </dl></dd>
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.cgopts">5.3. Cachegrind Command-line Options</a></span></dt>
 <dt><span class="sect1"><a href="cg-manual.html#cg-manual.annopts">5.4. cg_annotate Command-line Options</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.diffopts">5.5. cg_diff Command-line Options</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.acting-on">5.6. Acting on Cachegrind's Information</a></span></dt>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.sim-details">5.7. Simulation Details</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.mergeopts">5.5. cg_merge Command-line Options</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.diffopts">5.6. cg_diff Command-line Options</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.acting-on">5.7. Acting on Cachegrind's Information</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.sim-details">5.8. Simulation Details</a></span></dt>
 <dd><dl>
-<dt><span class="sect2"><a href="cg-manual.html#cache-sim">5.7.1. Cache Simulation Specifics</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#branch-sim">5.7.2. Branch Simulation Specifics</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.annopts.accuracy">5.7.3. Accuracy</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cache-sim">5.8.1. Cache Simulation Specifics</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#branch-sim">5.8.2. Branch Simulation Specifics</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.annopts.accuracy">5.8.3. Accuracy</a></span></dt>
 </dl></dd>
-<dt><span class="sect1"><a href="cg-manual.html#cg-manual.impl-details">5.8. Implementation Details</a></span></dt>
+<dt><span class="sect1"><a href="cg-manual.html#cg-manual.impl-details">5.9. Implementation Details</a></span></dt>
 <dd><dl>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.how-cg-works">5.8.1. How Cachegrind Works</a></span></dt>
-<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.file-format">5.8.2. Cachegrind Output File Format</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.how-cg-works">5.9.1. How Cachegrind Works</a></span></dt>
+<dt><span class="sect2"><a href="cg-manual.html#cg-manual.impl-details.file-format">5.9.2. Cachegrind Output File Format</a></span></dt>
 </dl></dd>
 </dl>
 </div>
 <p>To use this tool, you must specify
 <code class="option">--tool=cachegrind</code> on the
 Valgrind command line.</p>
-<div class="sect1" title="5.1. Overview">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="cg-manual.overview"></a>5.1. Overview</h2></div></div></div>
 <p>Cachegrind simulates how your program interacts with a machine's cache
@@ -67,10 +68,10 @@ hierarchy and (optionally) branch predictor.  It simulates a machine with
 independent first-level instruction and data caches (I1 and D1), backed by a
 unified second-level cache (L2).  This exactly matches the configuration of
 many modern machines.</p>
-<p>However, some modern machines have three levels of cache.  For these
+<p>However, some modern machines have three or four levels of cache.  For these
 machines (in the cases where Cachegrind can auto-detect the cache
-configuration) Cachegrind simulates the first-level and third-level caches.
-The reason for this choice is that the L3 cache has the most influence on
+configuration) Cachegrind simulates the first-level and last-level caches.
+The reason for this choice is that the last-level cache has the most influence on
 runtime, as it masks accesses to main memory.  Furthermore, the L1 caches
 often have low associativity, so simulating them can detect cases where the
 code interacts badly with this cache (eg. traversing a matrix column-wise
@@ -80,7 +81,7 @@ caches.</p>
 <p>
 Cachegrind gathers the following statistics (abbreviations used for each statistic
 is given in parentheses):</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>I cache reads (<code class="computeroutput">Ir</code>,
     which equals the number of instructions executed),
     I1 cache read misses (<code class="computeroutput">I1mr</code>) and
@@ -123,7 +124,7 @@ to make it faster.</p>
 instruction executed, you can find out how many instructions are
 executed per line, which can be useful for traditional profiling.</p>
 </div>
-<div class="sect1" title="5.2. Using Cachegrind, cg_annotate and cg_merge">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="cg-manual.profile"></a>5.2. Using Cachegrind, cg_annotate and cg_merge</h2></div></div></div>
 <p>First off, as for normal Valgrind use, you probably want to
@@ -137,9 +138,9 @@ information, and then run cg_annotate to get a detailed presentation of that
 information.  As an optional intermediate step, you can use cg_merge to sum
 together the outputs of multiple Cachegrind runs into a single file which
 you then use as the input for cg_annotate.  Alternatively, you can use
-cg_diff to difference the outputs of two Cachegrind runs into a signel file
+cg_diff to difference the outputs of two Cachegrind runs into a single file
 which you then use as the input for cg_annotate.</p>
-<div class="sect2" title="5.2.1. Running Cachegrind">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.running-cachegrind"></a>5.2.1. Running Cachegrind</h3></div></div></div>
 <p>To run Cachegrind on a program <code class="filename">prog</code>, run:</p>
@@ -184,7 +185,7 @@ not
 <p>Branch prediction statistics are not collected by default.
 To do so, add the option <code class="option">--branch-sim=yes</code>.</p>
 </div>
-<div class="sect2" title="5.2.2. Output File">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.outputfile"></a>5.2.2. Output File</h3></div></div></div>
 <p>As well as printing summary information, Cachegrind also writes
@@ -203,7 +204,7 @@ programs that spawn child processes.</p>
 <p>The output file can be big, many megabytes for large applications
 built with full debugging information.</p>
 </div>
-<div class="sect2" title="5.2.3. Running cg_annotate">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.running-cg_annotate"></a>5.2.3. Running cg_annotate</h3></div></div></div>
 <p>Before using cg_annotate,
@@ -213,7 +214,7 @@ wide if possible, as the output lines can be quite long.</p>
 <pre class="screen">cg_annotate &lt;filename&gt;</pre>
 <p>on a Cachegrind output file.</p>
 </div>
-<div class="sect2" title="5.2.4. The Output Preamble">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.the-output-preamble"></a>5.2.4. The Output Preamble</h3></div></div></div>
 <p>The first part of the output looks like this:</p>
@@ -231,7 +232,7 @@ Chosen for annotation:
 Auto-annotation:       off
 </pre>
 <p>This is a summary of the annotation options:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>I1 cache, D1 cache, LL cache: cache configuration.  So
     you know the configuration with which these results were
     obtained.</p></li>
@@ -273,7 +274,7 @@ Auto-annotation:       off
     option. In this case no.</p></li>
 </ul></div>
 </div>
-<div class="sect2" title="5.2.5. The Global and Function-level Counts">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.the-global"></a>5.2.5. The Global and Function-level Counts</h3></div></div></div>
 <p>Then follows summary statistics for the whole
@@ -316,7 +317,7 @@ a column contains only a dot it means the function never performs
 that event (e.g. the third row shows that
 <code class="computeroutput">strcmp()</code> contains no
 instructions that write to memory). The name
-<code class="computeroutput">???</code> is used if the the file name
+<code class="computeroutput">???</code> is used if the file name
 and/or function name could not be determined from debugging
 information. If most of the entries have the form
 <code class="computeroutput">???:???</code> the program probably
@@ -325,7 +326,7 @@ wasn't compiled with <code class="option">-g</code>.</p>
 the profiled program (e.g. <code class="filename">concord.c</code>)
 and from libraries (e.g. <code class="filename">getc.c</code>)</p>
 </div>
-<div class="sect2" title="5.2.6. Line-by-line Counts">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.line-by-line"></a>5.2.6. Line-by-line Counts</h3></div></div></div>
 <p>There are two ways to annotate source files -- by specifying them
@@ -420,7 +421,7 @@ information aren't specific enough.</p>
 e.g. 30 seconds or more.  Also beware that auto-annotation can
 produce a lot of output if your program is large!</p>
 </div>
-<div class="sect2" title="5.2.7. Annotating Assembly Code Programs">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.assembler"></a>5.2.7. Annotating Assembly Code Programs</h3></div></div></div>
 <p>Valgrind can annotate assembly code programs too, or annotate
@@ -435,7 +436,7 @@ programs to assembly code, and then assemble the assembly code files with
 <code class="option">-g</code> to achieve this.  You can then profile and annotate the
 assembly code source files in the same way as C/C++ source files.</p>
 </div>
-<div class="sect2" title="5.2.8. Forking Programs">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="ms-manual.forkingprograms"></a>5.2.8. Forking Programs</h3></div></div></div>
 <p>If your program forks, the child will inherit all the profiling data that
@@ -446,12 +447,12 @@ then the outputs from the parent and child will be intermingled in a single
 output file, which will almost certainly make it unreadable by
 cg_annotate.</p>
 </div>
-<div class="sect2" title="5.2.9. cg_annotate Warnings">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.annopts.warnings"></a>5.2.9. cg_annotate Warnings</h3></div></div></div>
 <p>There are a couple of situations in which
 cg_annotate issues warnings.</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>If a source file is more recent than the
     <code class="filename">cachegrind.out.&lt;pid&gt;</code> file.
     This is because the information in
@@ -468,11 +469,11 @@ cg_annotate issues warnings.</p>
     important.</p></li>
 </ul></div>
 </div>
-<div class="sect2" title="5.2.10. Unusual Annotation Cases">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.annopts.things-to-watch-out-for"></a>5.2.10. Unusual Annotation Cases</h3></div></div></div>
 <p>Some odd things that can occur during annotation:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem">
 <p>If annotating at the assembler level, you might see
     something like this:</p>
@@ -539,7 +540,7 @@ cg_annotate issues warnings.</p>
 <p>This list looks long, but these cases should be fairly
 rare.</p>
 </div>
-<div class="sect2" title="5.2.11. Merging Profiles with cg_merge">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.cg_merge"></a>5.2.11. Merging Profiles with cg_merge</h3></div></div></div>
 <p>
@@ -585,7 +586,7 @@ inputs.  cg_merge will stop and
 attempt to print a helpful error message if any of the input files
 fail these checks.</p>
 </div>
-<div class="sect2" title="5.2.12. Differencing Profiles with cg_diff">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
 <a name="cg-manual.cg_diff"></a>5.2.12. Differencing Profiles with cg_diff</h3></div></div></div>
 <p>
@@ -661,12 +662,12 @@ small differences like these;  it works in the same way as
 <code class="option">--mod-filename</code>.</p>
 </div>
 </div>
-<div class="sect1" title="5.3. Cachegrind Command-line Options">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="cg-manual.cgopts"></a>5.3. Cachegrind Command-line Options</h2></div></div></div>
 <p>Cachegrind-specific options are:</p>
 <div class="variablelist">
-<a name="cg.opts.list"></a><dl>
+<a name="cg.opts.list"></a><dl class="variablelist">
 <dt>
 <a name="opt.I1"></a><span class="term">
       <code class="option">--I1=&lt;size&gt;,&lt;associativity&gt;,&lt;line size&gt; </code>
@@ -724,11 +725,11 @@ small differences like these;  it works in the same way as
 </dl>
 </div>
 </div>
-<div class="sect1" title="5.4. cg_annotate Command-line Options">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
 <a name="cg-manual.annopts"></a>5.4. cg_annotate Command-line Options</h2></div></div></div>
 <div class="variablelist">
-<a name="cg_annotate.opts.list"></a><dl>
+<a name="cg_annotate.opts.list"></a><dl class="variablelist">
 <dt><span class="term">
       <code class="option">-h --help </code>
     </span></dt>
@@ -793,11 +794,25 @@ small differences like these;  it works in the same way as
 </dl>
 </div>
 </div>
-<div class="sect1" title="5.5. cg_diff Command-line Options">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
-<a name="cg-manual.diffopts"></a>5.5. cg_diff Command-line Options</h2></div></div></div>
+<a name="cg-manual.mergeopts"></a>5.5. cg_merge Command-line Options</h2></div></div></div>
 <div class="variablelist">
-<a name="cg_diff.opts.list"></a><dl>
+<a name="cg_merge.opts.list"></a><dl class="variablelist">
+<dt><span class="term">
+      <code class="option">-o outfile</code>
+    </span></dt>
+<dd><p>Write the profile data to <code class="computeroutput">outfile</code>
+            rather than to standard output.
+      </p></dd>
+</dl>
+</div>
+</div>
+<div class="sect1">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="cg-manual.diffopts"></a>5.6. cg_diff Command-line Options</h2></div></div></div>
+<div class="variablelist">
+<a name="cg_diff.opts.list"></a><dl class="variablelist">
 <dt><span class="term">
       <code class="option">-h --help </code>
     </span></dt>
@@ -822,9 +837,9 @@ small differences like these;  it works in the same way as
 </dl>
 </div>
 </div>
-<div class="sect1" title="5.6. Acting on Cachegrind's Information">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
-<a name="cg-manual.acting-on"></a>5.6. Acting on Cachegrind's Information</h2></div></div></div>
+<a name="cg-manual.acting-on"></a>5.7. Acting on Cachegrind's Information</h2></div></div></div>
 <p>
 Cachegrind gives you lots of information, but acting on that information
 isn't always easy.  Here are some rules of thumb that we have found to be
@@ -900,19 +915,19 @@ are, but it can't tell you how to fix them.  You have to work that out for
 yourself.  But at least you have the information!
 </p>
 </div>
-<div class="sect1" title="5.7. Simulation Details">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
-<a name="cg-manual.sim-details"></a>5.7. Simulation Details</h2></div></div></div>
+<a name="cg-manual.sim-details"></a>5.8. Simulation Details</h2></div></div></div>
 <p>
 This section talks about details you don't need to know about in order to
 use Cachegrind, but may be of interest to some people.
 </p>
-<div class="sect2" title="5.7.1. Cache Simulation Specifics">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
-<a name="cache-sim"></a>5.7.1. Cache Simulation Specifics</h3></div></div></div>
+<a name="cache-sim"></a>5.8.1. Cache Simulation Specifics</h3></div></div></div>
 <p>Specific characteristics of the cache simulation are as
 follows:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>Write-allocate: when a write miss occurs, the block
     written to is brought into the D1 cache.  Most modern caches
     have this property.</p></li>
@@ -920,7 +935,7 @@ follows:</p>
 <p>Bit-selection hash function: the set of line(s) in the cache
     to which a memory block maps is chosen by the middle bits
     M--(M+N-1) of the byte address, where:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="circle">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
 <li class="listitem"><p>line size = 2^M bytes</p></li>
 <li class="listitem"><p>(cache size / line size / associativity) = 2^N bytes</p></li>
 </ul></div>
@@ -956,11 +971,11 @@ need to specify it with the
 <code class="option">--D1</code> and
 <code class="option">--LL</code> options.</p>
 <p>Other noteworthy behaviour:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem">
 <p>References that straddle two cache lines are treated as
     follows:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="circle">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: circle; ">
 <li class="listitem"><p>If both blocks hit --&gt; counted as one hit</p></li>
 <li class="listitem"><p>If one block hits, the other misses --&gt; counted
         as one miss.</p></li>
@@ -987,9 +1002,9 @@ simulator, or to modify the existing ones in
 <code class="computeroutput">cg_sim.c</code>. We'd be
 interested to hear from anyone who does.</p>
 </div>
-<div class="sect2" title="5.7.2. Branch Simulation Specifics">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
-<a name="branch-sim"></a>5.7.2. Branch Simulation Specifics</h3></div></div></div>
+<a name="branch-sim"></a>5.8.2. Branch Simulation Specifics</h3></div></div></div>
 <p>Cachegrind simulates branch predictors intended to be
 typical of mainstream desktop/server processors of around 2004.</p>
 <p>Conditional branches are predicted using an array of 16384 2-bit
@@ -1021,12 +1036,12 @@ an assumption which is probably close to being true.</p>
 Architecture: A Quantitative Approach", 4th edition (2007), Section
 2.3 (pages 80-89) for background on modern branch predictors.</p>
 </div>
-<div class="sect2" title="5.7.3. Accuracy">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
-<a name="cg-manual.annopts.accuracy"></a>5.7.3. Accuracy</h3></div></div></div>
+<a name="cg-manual.annopts.accuracy"></a>5.8.3. Accuracy</h3></div></div></div>
 <p>Valgrind's cache profiling has a number of
 shortcomings:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p>It doesn't account for kernel activity -- the effect of system
     calls on the cache and branch predictor contents is ignored.</p></li>
 <li class="listitem"><p>It doesn't account for other process activity.
@@ -1059,7 +1074,7 @@ shortcomings:</p>
     be rare so hopefully this won't affect accuracy much.</p></li>
 </ul></div>
 <p>Another thing worth noting is that results are very sensitive.
-Changing the size of the the executable being profiled, or the sizes
+Changing the size of the executable being profiled, or the sizes
 of any of the shared libraries it uses, or even the length of their
 file names, can perturb the results.  Variations will be small, but
 don't expect perfectly repeatable results if your program changes at
@@ -1072,24 +1087,24 @@ This also perturbs the results.</p>
 be super-accurate, they should be close enough to be useful.</p>
 </div>
 </div>
-<div class="sect1" title="5.8. Implementation Details">
+<div class="sect1">
 <div class="titlepage"><div><div><h2 class="title" style="clear: both">
-<a name="cg-manual.impl-details"></a>5.8. Implementation Details</h2></div></div></div>
+<a name="cg-manual.impl-details"></a>5.9. Implementation Details</h2></div></div></div>
 <p>
 This section talks about details you don't need to know about in order to
 use Cachegrind, but may be of interest to some people.
 </p>
-<div class="sect2" title="5.8.1. How Cachegrind Works">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
-<a name="cg-manual.impl-details.how-cg-works"></a>5.8.1. How Cachegrind Works</h3></div></div></div>
+<a name="cg-manual.impl-details.how-cg-works"></a>5.9.1. How Cachegrind Works</h3></div></div></div>
 <p>The best reference for understanding how Cachegrind works is chapter 3 of
 "Dynamic Binary Analysis and Instrumentation", by Nicholas Nethercote.  It
 is available on the <a class="ulink" href="http://www.valgrind.org/docs/pubs.html" target="_top">Valgrind publications
 page</a>.</p>
 </div>
-<div class="sect2" title="5.8.2. Cachegrind Output File Format">
+<div class="sect2">
 <div class="titlepage"><div><div><h3 class="title">
-<a name="cg-manual.impl-details.file-format"></a>5.8.2. Cachegrind Output File Format</h3></div></div></div>
+<a name="cg-manual.impl-details.file-format"></a>5.9.2. Cachegrind Output File Format</h3></div></div></div>
 <p>The file format is fairly straightforward, basically giving the
 cost centre for every line, grouped by files and
 functions.  It's also totally generic and self-describing, in the sense that
@@ -1111,7 +1126,7 @@ count_line   ::= line_num ws? (count ws)+
 summary_line ::= "summary:" ws? (count ws)+
 count        ::= num | "."</pre>
 <p>Where:</p>
-<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
 <li class="listitem"><p><code class="computeroutput">non_nl_string</code> is any
     string not containing a newline.</p></li>
 <li class="listitem"><p><code class="computeroutput">cmd</code> is a string holding the

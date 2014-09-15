@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2012 Julian Seward
+   Copyright (C) 2005-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,9 +31,11 @@
 #ifndef __VKI_PPC64_LINUX_H
 #define __VKI_PPC64_LINUX_H
 
-// ppc64 is big-endian.
+#if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux)
 #define VKI_BIG_ENDIAN  1
-
+#elif defined(VGP_ppc64le_linux)
+#define VKI_LITTLE_ENDIAN  1
+#endif
 //----------------------------------------------------------------------
 // From linux-2.6.13/include/asm-ppc64/types.h
 //----------------------------------------------------------------------
@@ -64,8 +66,8 @@ typedef unsigned int vki_u32;
 
 /* PAGE_SHIFT determines the page size, unfortunately
    page size might vary between 32-bit and 64-bit ppc kernels */
-extern unsigned long VKI_PAGE_SHIFT;
-extern unsigned long VKI_PAGE_SIZE;
+extern UWord VKI_PAGE_SHIFT;
+extern UWord VKI_PAGE_SIZE;
 #define VKI_MAX_PAGE_SHIFT	16
 #define VKI_MAX_PAGE_SIZE	(1UL << VKI_MAX_PAGE_SHIFT)
 
@@ -360,6 +362,7 @@ struct vki_sigcontext {
 // From linux-2.6.13/include/asm-ppc64/fcntl.h
 //----------------------------------------------------------------------
 
+#define VKI_O_ACCMODE	         03
 #define VKI_O_RDONLY             00
 #define VKI_O_WRONLY             01
 #define VKI_O_RDWR               02
@@ -388,6 +391,10 @@ struct vki_sigcontext {
 
 #define VKI_F_SETOWN_EX		15
 #define VKI_F_GETOWN_EX		16
+
+#define VKI_F_OFD_GETLK		36
+#define VKI_F_OFD_SETLK		37
+#define VKI_F_OFD_SETLKW	38
 
 #define VKI_F_OWNER_TID		0
 #define VKI_F_OWNER_PID		1
@@ -422,12 +429,15 @@ struct vki_f_owner_ex {
 
 #define VKI_SO_TYPE         3
 
+#define VKI_SO_ATTACH_FILTER	26
+
 //----------------------------------------------------------------------
 // From linux-2.6.13/include/asm-ppc64/sockios.h
 //----------------------------------------------------------------------
 
 #define VKI_SIOCSPGRP       0x8902
 #define VKI_SIOCGPGRP       0x8904
+#define VKI_SIOCATMARK      0x8905
 #define VKI_SIOCGSTAMP      0x8906          /* Get stamp (timeval) */
 #define VKI_SIOCGSTAMPNS    0x8907          /* Get stamp (timespec) */
 
@@ -601,6 +611,9 @@ struct vki_termios {
 // From linux-2.6.13/include/asm-ppc64/ioctls.h
 //----------------------------------------------------------------------
 
+#define VKI_FIOCLEX         _VKI_IO('f', 1)
+#define VKI_FIONCLEX        _VKI_IO('f', 2)
+
 #define VKI_TCGETS          _VKI_IOR('t', 19, struct vki_termios)
 #define VKI_TCSETS          _VKI_IOW('t', 20, struct vki_termios)
 #define VKI_TCSETSW         _VKI_IOW('t', 21, struct vki_termios)
@@ -625,6 +638,7 @@ struct vki_termios {
 #define VKI_FIONREAD        _VKI_IOR('f', 127, int)
 #define VKI_TIOCLINUX       0x541C
 #define VKI_FIONBIO         _VKI_IOW('f', 126, int)
+#define VKI_TIOCNOTTY       0x5422
 #define VKI_TCSBRKP         0x5425  /* Needed for POSIX tcsendbreak() */
 #define VKI_TIOCGPTN        _VKI_IOR('T',0x30, unsigned int) 
                             /* Get Pty Number (of pty-mux device) */
@@ -667,7 +681,7 @@ struct vki_ucontext {
   struct vki_ucontext  *uc_link;
   vki_stack_t           uc_stack;
   vki_sigset_t          uc_sigmask;
-  vki_sigset_t          __unused[15]; /* Allow for uc_sigmask growth */
+  vki_sigset_t          __unused0[15]; /* Allow for uc_sigmask growth */
   struct vki_sigcontext uc_mcontext;  /* last for extensibility */
 };
 
@@ -772,6 +786,13 @@ struct vki_shminfo64 {
   unsigned long   __unused3;
   unsigned long   __unused4;
 };
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/asm-generic/errno.h
+//----------------------------------------------------------------------
+
+#define	VKI_ENOSYS       38  /* Function not implemented */
+#define	VKI_EOVERFLOW    75  /* Value too large for defined data type */
 
 //----------------------------------------------------------------------
 // end

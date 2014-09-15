@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,9 @@
 #ifndef __PUB_TOOL_MACHINE_H
 #define __PUB_TOOL_MACHINE_H
 
+#include "pub_tool_basics.h"           // ThreadID
+#include "libvex.h"                    // VexArchInfo
+
 #if defined(VGP_x86_linux)
 #  define VG_MIN_INSTR_SZB          1  // min length of native instruction
 #  define VG_MAX_INSTR_SZB         16  // max length of native instruction
@@ -50,7 +53,7 @@
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)  || defined(VGP_ppc64le_linux)
 #  define VG_MIN_INSTR_SZB          4
 #  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
@@ -60,6 +63,12 @@
 
 #elif defined(VGP_arm_linux)
 #  define VG_MIN_INSTR_SZB          2
+#  define VG_MAX_INSTR_SZB          4 
+#  define VG_CLREQ_SZB             20
+#  define VG_STACK_REDZONE_SZB      0
+
+#elif defined(VGP_arm64_linux)
+#  define VG_MIN_INSTR_SZB          4
 #  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
@@ -84,6 +93,12 @@
 #  define VG_STACK_REDZONE_SZB    128
 
 #elif defined(VGP_mips32_linux)
+#  define VG_MIN_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
+#  define VG_CLREQ_SZB             20
+#  define VG_STACK_REDZONE_SZB      0
+
+#elif defined(VGP_mips64_linux)
 #  define VG_MIN_INSTR_SZB          4
 #  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
@@ -115,36 +130,33 @@ VG_(set_shadow_regs_area) ( ThreadId tid,
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src );
 
-// Sets the shadow values for the syscall return value register(s).
-// This is platform specific.
-void VG_(set_syscall_return_shadows) ( ThreadId tid,
-                                       /* shadow vals for the result */
-                                       UWord s1res, UWord s2res,
-                                       /* shadow vals for the error val */
-                                       UWord s1err, UWord s2err );
-
 // Apply a function 'f' to all the general purpose registers in all the
-// current threads.
+// current threads. This is all live threads, or (when the process is exiting)
+// all threads that were instructed to die by the thread calling exit.
 // This is very Memcheck-specific -- it's used to find the roots when
 // doing leak checking.
 extern void VG_(apply_to_GP_regs)(void (*f)(ThreadId tid,
-                                            HChar* regname, UWord val));
+                                            const HChar* regname, UWord val));
 
 // This iterator lets you inspect each live thread's stack bounds.
 // Returns False at the end.  'tid' is the iterator and you can only
 // safely change it by making calls to these functions.
 extern void VG_(thread_stack_reset_iter) ( /*OUT*/ThreadId* tid );
+// stack_min is the address of the lowest stack byte,
+// stack_max is the address of the highest stack byte.
+// In other words, the live stack is [stack_min, stack_max].
 extern Bool VG_(thread_stack_next)       ( /*MOD*/ThreadId* tid,
                                            /*OUT*/Addr* stack_min, 
                                            /*OUT*/Addr* stack_max );
 
-// Returns .client_stack_highest_word for the given thread
+// Returns .client_stack_highest_byte for the given thread
+// i.e. the highest addressable byte of the stack.
 extern Addr VG_(thread_get_stack_max) ( ThreadId tid );
 
 // Returns how many bytes have been allocated for the stack of the given thread
 extern SizeT VG_(thread_get_stack_size) ( ThreadId tid );
 
-// Returns the bottommost address of the alternate signal stack.
+// Returns the lowest address of the alternate signal stack.
 // See also the man page of sigaltstack().
 extern Addr VG_(thread_get_altstack_min) ( ThreadId tid );
 
@@ -163,6 +175,10 @@ extern void* VG_(fnptr_to_fnentry)( void* );
    and on the specific capabilities we are simulating for that guest
    (eg, AVX or non-AVX ?, for amd64). */
 extern Int VG_(machine_get_size_of_largest_guest_register) ( void );
+
+/* Return host cpu info. */
+extern void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch*,
+                                          /*OUT*/VexArchInfo* );
 
 #endif   // __PUB_TOOL_MACHINE_H
 

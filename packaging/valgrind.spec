@@ -64,8 +64,6 @@ has been successfully used to optimize several KDE applications.
 cp %{SOURCE1001} .
 
 %build
-export CFLAGS="-O2"
-export CXXFLAGS="-O2"
 %autogen
 
 %ifarch x86_64

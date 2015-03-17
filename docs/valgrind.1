@@ -2,12 +2,12 @@
 .\"     Title: VALGRIND
 .\"    Author: [see the "Author" section]
 .\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
-.\"      Date: 09/11/2014
+.\"      Date: 11/25/2014
 .\"    Manual: Release 3.10.0
 .\"    Source: Release 3.10.0
 .\"  Language: English
 .\"
-.TH "VALGRIND" "1" "09/11/2014" "Release 3.10.0" "Release 3.10.0"
+.TH "VALGRIND" "1" "11/25/2014" "Release 3.10.0" "Release 3.10.0"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -833,12 +833,18 @@ When enabled, Valgrind will read information about variable types and locations 
 ==15363==    by 0x8048550: main (varinfo1\&.c:56)
 ==15363==  Address 0xbea0d0cc is on thread 1\*(Aqs stack
 ==15363==  in frame #1, created by main (varinfo1\&.c:45)
-></programlisting>
-
-      <para>And here are the same errors with
-      <option>\-\-read\-var\-info=yes</option>:</para>
-
-<programlisting><![CDATA[
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+And here are the same errors with
+\fB\-\-read\-var\-info=yes\fR:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
 ==15370== Uninitialised byte(s) found during client check request
 ==15370==    at 0x80484A9: croak (varinfo1\&.c:28)
 ==15370==    by 0x8048544: main (varinfo1\&.c:55)

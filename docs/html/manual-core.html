@@ -1599,12 +1599,10 @@ need to use them.</p>
 ==15363==    by 0x8048550: main (varinfo1.c:56)
 ==15363==  Address 0xbea0d0cc is on thread 1's stack
 ==15363==  in frame #1, created by main (varinfo1.c:45)
-&gt;&lt;/programlisting&gt;
-
-      &lt;para&gt;And here are the same errors with
-      &lt;option&gt;--read-var-info=yes&lt;/option&gt;:&lt;/para&gt;
-
-&lt;programlisting&gt;&lt;![CDATA[
+</pre>
+<p>And here are the same errors with
+      <code class="option">--read-var-info=yes</code>:</p>
+<pre class="programlisting">
 ==15370== Uninitialised byte(s) found during client check request
 ==15370==    at 0x80484A9: croak (varinfo1.c:28)
 ==15370==    by 0x8048544: main (varinfo1.c:55)

@@ -3,7 +3,7 @@ Url:            http://valgrind.org/
 Summary:        Memory Management Debugger
 License:        GPL-2.0+
 Group:          Development/Tools/Debuggers
-Version:        3.10.0
+Version:        3.10.1
 Release:        0
 Source0:        %{name}-%{version}.tar.bz2
 Source1001: 	valgrind.manifest

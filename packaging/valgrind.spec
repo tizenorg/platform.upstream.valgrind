@@ -64,6 +64,10 @@ has been successfully used to optimize several KDE applications.
 cp %{SOURCE1001} .
 
 %build
+
+# -fexceptions causes memcheck link command to fail when built with GCC 5.1
+export CFLAGS=`echo $CFLAGS | sed s,-fexceptions,,g`
+
 %autogen
 
 %ifarch x86_64

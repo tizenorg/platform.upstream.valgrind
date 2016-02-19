@@ -64,6 +64,9 @@ has been successfully used to optimize several KDE applications.
 cp %{SOURCE1001} .
 
 %build
+export CFLAGS="$(echo $CFLAGS | sed 's/-mthumb//g')"
+export CXXFLAGS="$(echo $CXXFLAGS | sed 's/-mthumb//g')"
+export FFLAGS="$(echo $FFLAGS | sed 's/-mthumb//g')"
 %autogen
 
 %ifarch x86_64

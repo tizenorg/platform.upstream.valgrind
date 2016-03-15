@@ -64,6 +64,17 @@ has been successfully used to optimize several KDE applications.
 cp %{SOURCE1001} .
 
 %build
+%ifarch %arm
+# Valgrind doesn't support compiling for Thumb yet. Remove when it gets
+# native thumb support.
+RPM_OPT_FLAGS="$(echo $RPM_OPT_FLAGS | sed 's/-mthumb //g')"
+RPM_OPT_FLAGS="$(echo $RPM_OPT_FLAGS | sed 's/-Wa,-mimplicit-it=thumb //g')"
+%endif
+# not a good idea to build valgrind with fortify, as it does not link glibc
+RPM_OPT_FLAGS="$(echo $RPM_OPT_FLAGS | sed 's/-Wp,-D_FORTIFY_SOURCE=2 //g')"
+export CFLAGS="$RPM_OPT_FLAGS"
+export CXXFLAGS="$RPM_OPT_FLAGS"
+
 %autogen
 
 %ifarch x86_64
